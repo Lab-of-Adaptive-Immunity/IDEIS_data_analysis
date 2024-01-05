@@ -1,0 +1,4 @@
+fastqs,sample,library_type
+/path/to/IDEIS_data_analysis/GSE212998/Fastqs,GFP-pos-w2-expand-CITE,Antibody Capture
+/path/to/IDEIS_data_analysis/GSE212998/Fastqs,GFP-pos-w2-expand-GEX,Gene Expression
+

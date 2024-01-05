@@ -1,0 +1,5 @@
+fastqs,sample,library_type
+/path/to/IDEIS_data_analysis/PRJEB40376/Fastqs,5-ADT_pooled_and_merged,Antibody Capture
+/path/to/IDEIS_data_analysis/PRJEB40376/Fastqs,5-HTO_pooled_and_merged,Antibody Capture
+/path/to/IDEIS_data_analysis/PRJEB40376/Fastqs,5-RNA_pooled_and_merged,Gene Expression
+

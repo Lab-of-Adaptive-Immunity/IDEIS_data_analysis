@@ -1,0 +1,133 @@
+---
+title: "GSE155006"
+author: "Juraj Michalik"
+date: "2023-07-25"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+Analysis of Cd45/Ptprc isoforms from CD45+ cells from various murine organs. These data lack FB so we need to use standard markers to identify cell types and see the match with Cd45 isoform expression.
+Paper: https://www.sciencedirect.com/science/article/pii/S1074761320304921?via%3Dihub
+
+# Initialization
+
+## Creating objects
+
+Load libraries.
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(future)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(dbscan)
+library(scatterpie)
+library(reshape2)
+library(ggrepel)
+library(scds)
+library(SingleCellExperiment)
+library(STACAS)
+library(SingleR)
+library(celldex)
+
+# negation of %in% 
+`%nin%` = Negate(`%in%`)
+```
+
+Create required directories.
+
+```{r}
+dir.create('Datasets', showWarnings = FALSE)
+dir.create('Whitelists', showWarnings = FALSE)
+```
+
+Load all data (8 samples).
+
+```{r}
+count.mouse.liver.aged <- Read10X('Count_matrices/GSM4321524_Liver_Aged/')
+count.mouse.liver.young <- Read10X('Count_matrices/GSM4321525_Liver_Young/')
+count.mouse.lungs.aged <- Read10X('Count_matrices/GSM4321526_Lungs_Aged/')
+count.mouse.lungs.young <- Read10X('Count_matrices/GSM4321527_Lungs_Young/')
+count.mouse.peritoneal.cells.aged <- Read10X('Count_matrices/GSM4321528_Peritoneal_cells_Aged/')
+count.mouse.peritoneal.cells.young <- Read10X('Count_matrices/GSM4321529_Peritoneal_cells_Young/')
+count.mouse.spleen.aged <- Read10X('Count_matrices/GSM4321530_Spleen_Aged/')
+count.mouse.spleen.young <- Read10X('Count_matrices/GSM4321531_Spleen_Young/')
+```
+
+```{r}
+mm.liver.aged <- CreateSeuratObject(count.mouse.liver.aged, project = 'Aged Liver')
+mm.liver.young <- CreateSeuratObject(count.mouse.liver.young, project = 'Young Liver')
+mm.lungs.aged <- CreateSeuratObject(count.mouse.lungs.aged, project = 'Aged Lungs')
+mm.lungs.young <- CreateSeuratObject(count.mouse.lungs.young, project = 'Young Lungs')
+mm.peritoneal.cells.aged <- CreateSeuratObject(count.mouse.peritoneal.cells.aged, project = 'Aged Peritoneal Cells')
+mm.peritoneal.cells.young <- CreateSeuratObject(count.mouse.peritoneal.cells.young, project = 'Young Peritoneal Cells')
+mm.spleen.aged <- CreateSeuratObject(count.mouse.spleen.aged, project = 'Aged Spleen')
+mm.spleen.young <- CreateSeuratObject(count.mouse.spleen.young, project = 'Young Spleen')
+```
+
+Add percentage of MT and RP genes, then remove said genes.
+
+```{r, warning=F, message=F}
+mm.mog.list <- list(mm.liver.aged, mm.liver.young, mm.lungs.aged, mm.lungs.young,
+                    mm.peritoneal.cells.aged, mm.peritoneal.cells.young, mm.spleen.aged, mm.spleen.young)
+```
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  mm.mog.list[[i]][["percent.mt"]] <- PercentageFeatureSet(object = mm.mog.list[[i]], pattern = "^mt-")
+  mm.mog.list[[i]][["percent.rp"]] <- PercentageFeatureSet(object = mm.mog.list[[i]], pattern = "^Rp[s|l]")  
+}
+```
+
+Now filter out those genes as well as genes related to V(D)J.
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  mm.mog.list[[i]] <- mm.mog.list[[i]][!(grepl('^Tr[a|b][v|d|j]', rownames(mm.mog.list[[i]])) |
+                                         grepl('^mt-', rownames(mm.mog.list[[i]])) |
+                                         grepl('^Rp[s|l]', rownames(mm.mog.list[[i]]))),]
+}
+```
+
+```{r}
+mog.names <- c('Liver_Aged', 'Liver_Young', 'Lungs_Aged', 'Lungs_Young',
+               'Peritoneal_Cells_Aged', 'Peritoneal_Cells_Young', 'Spleen_Aged', 'Spleen_Young')
+```
+
+Write whitelists.
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  write.table(gsub('-1','', colnames(mm.mog.list[[i]])), paste0('Whitelists/Whitelist_', mog.names[i], '.csv'), quote = F, row.names = F, col.names = F)
+}
+```
+
+Save initial data sets.
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  saveRDS(mm.mog.list[[i]], paste0('Datasets/', mog.names[i], '_initial_data.rds'))
+}
+```
+
+Now run IDEIS and follow with corresponding analysis file.

@@ -1,0 +1,139 @@
+---
+title: "Ptprc shown on GSE187515"
+author: "Juraj Michalik"
+date: "2023-03-05"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+Analysis of CD45/PTPRC isoforms from CD4+ T cell data from Healthy Controls. These data have FB applied to them so we can use it as reference. 
+Paper: https://www.med.upenn.edu/ifi/assets/user-content/documents/single-cell-duplicate.pdf
+
+# Initialization
+
+## Creating objects
+
+Load libraries.
+
+```{r}
+library(Seurat)
+library(SeuratDisk)
+library(Signac)
+library(Matrix)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(ggrepel)
+library(scds)
+library(SingleCellExperiment)
+library(STACAS)
+library(scds)
+library(SingleR)
+library(celldex)
+library(Matrix)
+library(Matrix.utils)
+library(scales)
+
+# negation of %in% 
+`%nin%` = Negate(`%in%`)
+```
+
+Create required directories.
+
+```{r}
+dir.create('Datasets', showWarnings = FALSE)
+dir.create('Whitelists', showWarnings = FALSE)
+```
+
+Load data (3 samples).
+
+```{r}
+# References
+ref.2004.counts <- Read10X('2004/outs/raw_feature_bc_matrix/')
+ref.2023Rep1.counts <- Read10X('2023Rep1/outs/raw_feature_bc_matrix/')
+ref.2023Rep2.counts <- Read10X('2023Rep2/outs/raw_feature_bc_matrix/')
+```
+
+Make lists of loaded data.
+
+```{r}
+count_m_list <- list(ref.2004.counts, ref.2023Rep1.counts, ref.2023Rep2.counts)
+```
+
+Now prepare seurat objects. We also put them all in list for easier manipulation.
+
+```{r}
+ref2004 <- CreateSeuratObject(ref.2004.counts$`Gene Expression`, project = '2004', min.cells = 3, min.features = 200)
+ref2023Rep1 <- CreateSeuratObject(ref.2023Rep1.counts$`Gene Expression`, project = '2023Rep1', min.cells = 3, min.features = 200)
+ref2023Rep2 <- CreateSeuratObject(ref.2023Rep2.counts$`Gene Expression`, project = '2023Rep2', min.cells = 3, min.features = 200)
+
+HIV_list <- list(ref2004, ref2023Rep1, ref2023Rep2)
+names(HIV_list) <- c('2004', '2023Rep1', '2023Rep2')
+```
+
+## Filtering of unnecessary genes.
+
+We create percentages for MT and RPS/L genes.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]][["percent.mt"]] <- PercentageFeatureSet(object = HIV_list[[i]], pattern = "^MT-")
+  HIV_list[[i]][["percent.rp"]] <- PercentageFeatureSet(object = HIV_list[[i]], pattern = "^RP[S|L]")  
+}
+```
+
+Now filter out those genes as well as genes related to V(D)J.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]] <- HIV_list[[i]][!(grepl('^TR[A|B][V|D|J]', rownames(HIV_list[[i]])) |
+                                   grepl('^MT-', rownames(HIV_list[[i]])) |
+                                   grepl('^RP[S|L]', rownames(HIV_list[[i]]))),]
+}
+```
+
+Write whitelists.
+
+```{r}
+write(gsub('-1','', colnames(HIV_list[[1]])), 'Whitelists/Whitelist_2004.csv')
+write(gsub('-1','', colnames(HIV_list[[2]])), 'Whitelists/Whitelist_2023Rep1.csv')
+write(gsub('-1','', colnames(HIV_list[[3]])), 'Whitelists/Whitelist_2023Rep2.csv')
+```
+
+Add antibody assays.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  HIV.FB <- count_m_list[[i]]$`Antibody Capture`[,colnames(count_m_list[[i]]$`Antibody Capture`) %in% colnames(HIV_list[[i]])]
+  HIV_list[[i]][['Antibodies']] <- CreateAssayObject(HIV.FB)
+}
+```
+
+Save all in data sets.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  saveRDS(HIV_list[[i]], paste0('Datasets/', names(HIV_list)[i], '_initial_data.rds'))
+}
+```
+
+Now run IDEIS and CD45er and follow with corresponding analysis file.

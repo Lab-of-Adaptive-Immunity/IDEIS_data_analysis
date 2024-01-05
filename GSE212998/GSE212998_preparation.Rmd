@@ -1,0 +1,170 @@
+---
+title: "GSE212998"
+author: "Juraj Michalik"
+date: "2023-07-25"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+Analysis of CD45/PTPRC isoforms from CD8+ data from CMV-seropositive patients. These data have FB applied to them so we can use it as reference. 
+Paper: https://www.cell.com/cell/pdf/S0092-8674(22)01460-X.pdf
+
+# Initialization
+
+## Creating objects
+
+Load libraries.
+
+```{r setup, include=FALSE}
+library(Matrix)
+library(Seurat)
+library(future)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(dbscan)
+library(scatterpie)
+library(reshape2)
+library(ggrepel)
+library(scds)
+library(SingleCellExperiment)
+library(STACAS)
+library(Matrix.utils)
+library(SingleR)
+library(celldex)
+
+# negation of %in% 
+`%nin%` = Negate(`%in%`)
+```
+
+Create required directories.
+
+```{r}
+dir.create('Datasets', showWarnings = FALSE)
+dir.create('Whitelists', showWarnings = FALSE)
+```
+
+Load data (5 samples).
+
+```{r}
+count.GEX.GFP.pos.pre.inf.w1 <- Read10X('GFP-pos-w1/outs/raw_feature_bc_matrix/')
+count.GEX.GFP.pos.pre.inf.w2 <- Read10X('GFP-pos-w2/outs/raw_feature_bc_matrix/')
+
+count.GEX.GFP.pos.inf.w1 <- Read10X('GFP-pos-w1-expand/outs/raw_feature_bc_matrix/')
+count.GEX.GFP.pos.inf.w2 <- Read10X('GFP-pos-w2-expand/outs/raw_feature_bc_matrix/')
+
+count.GEX.GFP.neg.inf <- Read10X('GFP-neg-expand/outs/raw_feature_bc_matrix/')
+```
+
+```{r}
+GFP_pos_w1_pre_inf <- CreateSeuratObject(count.GEX.GFP.pos.pre.inf.w1$`Gene Expression`, 'GFP+.w1', min.cells = 3, min.features = 200)
+GFP_pos_w2_pre_inf <- CreateSeuratObject(count.GEX.GFP.pos.pre.inf.w2$`Gene Expression`, 'GFP+.w2', min.cells = 3, min.features = 200)
+
+GFP_pos_w1_inf <- CreateSeuratObject(count.GEX.GFP.pos.inf.w1$`Gene Expression`, 'GFP+.w1.expand', min.cells = 3, min.features = 200)
+GFP_pos_w2_inf <- CreateSeuratObject(count.GEX.GFP.pos.inf.w2$`Gene Expression`, 'GFP+.w2.expand', min.cells = 3, min.features = 200)
+
+GFP_neg_inf <- CreateSeuratObject(count.GEX.GFP.neg.inf$`Gene Expression`, 'GFP-.w2.expand', min.cells = 3, min.features = 200)
+```
+
+Add percentage of MT and RP genes, then remove said genes.
+
+```{r}
+GFP_pos_w1_pre_inf[["percent.mt"]] <- PercentageFeatureSet(object = GFP_pos_w1_pre_inf, pattern = "^MT-")
+GFP_pos_w1_pre_inf[["percent.rp"]] <- PercentageFeatureSet(object = GFP_pos_w1_pre_inf, pattern = "^RP[S|L]")  
+
+GFP_pos_w2_pre_inf[["percent.mt"]] <- PercentageFeatureSet(object = GFP_pos_w2_pre_inf, pattern = "^MT-")
+GFP_pos_w2_pre_inf[["percent.rp"]] <- PercentageFeatureSet(object = GFP_pos_w2_pre_inf, pattern = "^RP[S|L]")  
+
+GFP_pos_w1_inf[["percent.mt"]] <- PercentageFeatureSet(object = GFP_pos_w1_inf, pattern = "^MT-")
+GFP_pos_w1_inf[["percent.rp"]] <- PercentageFeatureSet(object = GFP_pos_w1_inf, pattern = "^RP[S|L]")  
+
+GFP_pos_w2_inf[["percent.mt"]] <- PercentageFeatureSet(object = GFP_pos_w2_inf, pattern = "^MT-")
+GFP_pos_w2_inf[["percent.rp"]] <- PercentageFeatureSet(object = GFP_pos_w2_inf, pattern = "^RP[S|L]") 
+
+GFP_neg_inf[["percent.mt"]] <- PercentageFeatureSet(object = GFP_neg_inf, pattern = "^MT-")
+GFP_neg_inf[["percent.rp"]] <- PercentageFeatureSet(object = GFP_neg_inf, pattern = "^RP[S|L]") 
+```
+
+Now filter out those genes as well as genes related to V(D)J.
+
+```{r}
+GFP_pos_w1_pre_inf <- GFP_pos_w1_pre_inf[!(grepl('^TR[A|B][V|D|J]', rownames(GFP_pos_w1_pre_inf)) |
+                                           grepl('^MT-', rownames(GFP_pos_w1_pre_inf)) |
+                                           grepl('^RP[S|L]', rownames(GFP_pos_w1_pre_inf))),]
+
+GFP_pos_w2_pre_inf <- GFP_pos_w2_pre_inf[!(grepl('^TR[A|B][V|D|J]', rownames(GFP_pos_w2_pre_inf)) |
+                                           grepl('^MT-', rownames(GFP_pos_w2_pre_inf)) |
+                                           grepl('^RP[S|L]', rownames(GFP_pos_w2_pre_inf))),]
+
+GFP_pos_w1_inf <- GFP_pos_w1_inf[!(grepl('^TR[A|B][V|D|J]', rownames(GFP_pos_w1_inf)) |
+                                   grepl('^MT-', rownames(GFP_pos_w1_inf)) |
+                                   grepl('^RP[S|L]', rownames(GFP_pos_w1_inf))),]
+
+GFP_pos_w2_inf <- GFP_pos_w2_inf[!(grepl('^TR[A|B][V|D|J]', rownames(GFP_pos_w2_inf)) |
+                                   grepl('^MT-', rownames(GFP_pos_w2_inf)) |
+                                   grepl('^RP[S|L]', rownames(GFP_pos_w2_inf))),]
+
+GFP_neg_inf <- GFP_neg_inf[!(grepl('^TR[A|B][V|D|J]', rownames(GFP_neg_inf)) |
+                               grepl('^MT-', rownames(GFP_neg_inf)) |
+                               grepl('^RP[S|L]', rownames(GFP_neg_inf))),]
+```
+
+```{r}
+
+atb <- count.GEX.GFP.pos.pre.inf.w1$`Antibody Capture`[,colnames(count.GEX.GFP.pos.pre.inf.w1$`Antibody Capture`) %in% colnames(GFP_pos_w1_pre_inf)]
+GFP_pos_w1_pre_inf[['Antibodies']] <- CreateAssayObject(atb)
+
+atb <- count.GEX.GFP.pos.pre.inf.w2$`Antibody Capture`[,colnames(count.GEX.GFP.pos.pre.inf.w2$`Antibody Capture`) %in% colnames(GFP_pos_w2_pre_inf)]
+GFP_pos_w2_pre_inf[['Antibodies']] <- CreateAssayObject(atb)
+
+atb <- count.GEX.GFP.pos.inf.w1$`Antibody Capture`[,colnames(count.GEX.GFP.pos.inf.w1$`Antibody Capture`) %in% colnames(GFP_pos_w1_inf)]
+GFP_pos_w1_inf[['Antibodies']] <- CreateAssayObject(atb)
+
+atb <- count.GEX.GFP.pos.inf.w2$`Antibody Capture`[,colnames(count.GEX.GFP.pos.inf.w2$`Antibody Capture`) %in% colnames(GFP_pos_w2_inf)]
+GFP_pos_w2_inf[['Antibodies']] <- CreateAssayObject(atb)
+
+atb <- count.GEX.GFP.neg.inf$`Antibody Capture`[,colnames(count.GEX.GFP.neg.inf$`Antibody Capture`) %in% colnames(GFP_neg_inf)]
+GFP_neg_inf[['Antibodies']] <- CreateAssayObject(atb)
+```
+
+```{r}
+write.table(gsub('-1', '', colnames(GFP_pos_w1_pre_inf)), 'Whitelists/Whitelist_GFP-pos-w1.csv', row.names = F, col.names = F, quote = F)
+write.table(gsub('-1', '', colnames(GFP_pos_w2_pre_inf)), 'Whitelists/Whitelist_GFP-pos-w2.csv', row.names = F, col.names = F, quote = F)
+write.table(gsub('-1', '', colnames(GFP_pos_w1_inf)), 'Whitelists/Whitelist_GFP_pos-w1-expand.csv', row.names = F, col.names = F, quote = F)
+write.table(gsub('-1', '', colnames(GFP_pos_w2_inf)), 'Whitelists/Whitelist_GFP_pos-w2-expand.csv', row.names = F, col.names = F, quote = F)
+write.table(gsub('-1', '', colnames(GFP_neg_inf)), 'Whitelists/Whitelist_GFP_neg_inf.csv', row.names = F, col.names = F, quote = F)
+```
+
+```{r}
+enter.data.list <- list(GFP_pos_w1_pre_inf, GFP_pos_w2_pre_inf, GFP_pos_w1_inf, GFP_pos_w2_inf, GFP_neg_inf)
+names.files <- c('GFP-pos-W1', 'GFP-pos-W2', 'GFP-pos-W1-expand', 'GFP-pos-W2-expand', 'GFP-neg-expand')
+```
+
+Save all in data sets.
+
+```{r}
+for(i in 1:length(enter.data.list)){
+  saveRDS(enter.data.list[[i]], paste0('Datasets/', names.files[i], '_initial_data.rds'))
+}
+```
+
+Now run IDEIS and CD45er and follow with corresponding analysis file.

@@ -1,0 +1,145 @@
+---
+title: "PRJEB40376 Analysis"
+author: "Juraj Michalik"
+date: "2023-08-14"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+Analysis of CD45/PTPRC isoforms from human PBMCs. These data lack FB so we need to use standard markers to identify cell types and see the match with Cd45 isoform expression.
+Paper: https://www.sciencedirect.com/science/article/pii/S1074761320304921?via%3Dihub
+
+Run this script once GSE155006_preparation.Rmd and IDEIS were run.
+
+# Initialization
+
+## Creating objects
+
+Load libraries.
+
+```{r}
+library(Seurat)
+library(future)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(dbscan)
+library(scatterpie)
+library(reshape2)
+library(ggrepel)
+library(scds)
+library(SingleCellExperiment)
+library(STACAS)
+```
+
+Create required directories.
+
+```{r}
+dir.create('Datasets', showWarnings = FALSE)
+dir.create('Whitelists', showWarnings = FALSE)
+```
+
+Load all required samples (10 samples).
+
+```{r}
+pool1 <- Read10X('PRJEB40376/Pool_1/raw_feature_bc_matrix/')
+pool2 <- Read10X('PRJEB40376/Pool_2/raw_feature_bc_matrix/')
+pool3 <- Read10X('PRJEB40376/Pool_3/raw_feature_bc_matrix/')
+pool4 <- Read10X('PRJEB40376/Pool_4/raw_feature_bc_matrix/')
+pool5 <- Read10X('PRJEB40376/Pool_5/raw_feature_bc_matrix/')
+pool6 <- Read10X('PRJEB40376/Pool_6/raw_feature_bc_matrix/')
+pool7 <- Read10X('PRJEB40376/Pool_7/raw_feature_bc_matrix/')
+pool8 <- Read10X('PRJEB40376/Pool_8/raw_feature_bc_matrix/')
+pool9 <- Read10X('PRJEB40376/Pool_9/raw_feature_bc_matrix/')
+pool10 <- Read10X('PRJEB40376/Pool_10/raw_feature_bc_matrix/')
+
+pool.count.matrices <- list(pool1, pool2, pool3, pool4, pool5, pool6, pool7, pool8, pool9, pool10)
+```
+
+Create Seurat objects and put them into separate list.
+
+```{r}
+cell.lim <- 3
+feature.lim <- 1000
+seu.pool1 <- CreateSeuratObject(pool1$`Gene Expression`, project = 'Pool_1', min.cells = cell.lim, min.features = feature.lim)
+seu.pool2 <- CreateSeuratObject(pool2$`Gene Expression`, project = 'Pool_2',  min.cells = cell.lim, min.features = feature.lim)
+seu.pool3 <- CreateSeuratObject(pool3$`Gene Expression`, project = 'Pool_3', min.cells = cell.lim, min.features = feature.lim)
+seu.pool4 <- CreateSeuratObject(pool4$`Gene Expression`, project = 'Pool_4', min.cells = cell.lim, min.features = feature.lim)
+seu.pool5 <- CreateSeuratObject(pool5$`Gene Expression`, project = 'Pool_5', min.cells = cell.lim, min.features = feature.lim)
+seu.pool6 <- CreateSeuratObject(pool6$`Gene Expression`, project = 'Pool_6', min.cells = cell.lim, min.features = feature.lim)
+seu.pool7 <- CreateSeuratObject(pool7$`Gene Expression`, project = 'Pool_7', min.cells = cell.lim, min.features = feature.lim)
+seu.pool8 <- CreateSeuratObject(pool8$`Gene Expression`, project = 'Pool_8', min.cells = cell.lim, min.features = feature.lim)
+seu.pool9 <- CreateSeuratObject(pool9$`Gene Expression`, project = 'Pool_9', min.cells = cell.lim, min.features = feature.lim)
+seu.pool10 <- CreateSeuratObject(pool10$`Gene Expression`, project = 'Pool_10', min.cells = cell.lim, min.features = feature.lim)
+
+seu.pool.list <- list(seu.pool1, seu.pool2, seu.pool3, seu.pool4, seu.pool5, seu.pool6, seu.pool7, seu.pool8, seu.pool9, seu.pool10)
+names(seu.pool.list) <- paste('Pool', seq(1,10,1), sep = '_')
+```
+
+Compute the fraction of mitochondrial and ribosomal genes.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  seu.pool.list[[i]][["percent.mt"]] <- PercentageFeatureSet(object = seu.pool.list[[i]], pattern = "^MT-")
+  seu.pool.list[[i]][["percent.rp"]] <- PercentageFeatureSet(object = seu.pool.list[[i]], pattern = "^RP[S|L]")  
+}
+```
+
+Remove VDJ-V related genes as well as ribosomal and mitochondrial genes.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  seu.pool.list[[i]] <- seu.pool.list[[i]][!(grepl('^TR[A|B][V|D|J]', rownames(seu.pool.list[[i]])) |
+                                             grepl('^MT-', rownames(seu.pool.list[[i]])) |
+                                             grepl('^RP[S|L]', rownames(seu.pool.list[[i]]))),]
+}
+```
+
+Write whitelists.
+
+```{r}
+pool.names <- paste0('Pool_', seq(1,10,1))
+for(i in 1:length(seu.pool.list)){
+  write.table(gsub('-1','', colnames(seu.pool.list[[i]])),
+              paste0('Whitelists/Whitelist_', pool.names[[i]], '.csv'), 
+              quote = F, row.names = F, col.names = F)
+}
+```
+
+Import Antibody lists.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  antibodies.pool <- pool.count.matrices[[i]]$`Antibody Capture`[,colnames(pool.count.matrices[[i]]$`Antibody Capture`) %in% colnames(seu.pool.list[[i]])]
+  seu.pool.list[[i]][['Antibodies']] <- CreateAssayObject(antibodies.pool)
+}
+```
+
+Save.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  saveRDS(seu.pool.list[[i]], paste0('Datasets/', names(seu.pool.list)[i], '_initial_data.rds'))
+}
+```
+
+Now run IDEIS and follow with corresponding analysis file.

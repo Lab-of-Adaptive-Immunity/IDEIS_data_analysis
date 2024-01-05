@@ -1,0 +1,1673 @@
+---
+title: "Ptprc shown on GSE187515"
+author: "Juraj Michalik"
+date: "2023-03-05"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+Analysis of CD45/PTPRC isoforms from CD4+ T cell data from Healthy Control. These data have FB applied to them so we can use it as reference. 
+Paper: https://www.med.upenn.edu/ifi/assets/user-content/documents/single-cell-duplicate.pdf
+
+Run this script once GSE187515_preparation.Rmd and IDEIS, CD45er and benchmarks were run.
+
+# Initialization
+
+## Creating objects
+
+Load libraries.
+
+```{r}
+library(Seurat)
+library(SeuratDisk)
+library(Signac)
+library(Matrix)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(ggrepel)
+library(scds)
+library(SingleCellExperiment)
+library(STACAS)
+library(scds)
+library(SingleR)
+library(celldex)
+library(Matrix)
+library(Matrix.utils)
+library(scales)
+library(stringr)
+
+# negation of %in% 
+`%nin%` = Negate(`%in%`)
+```
+
+Set up color code for whole analysis.
+
+```{r}
+CD45RA.IDAO.col <- 'firebrick3'
+CD45RO.IDAO.col <- 'darkorchid2'
+CD45RA.FB.col <- 'red'
+CD45RO.FB.col <- 'dodgerblue2'
+CD45RA.CD45er.col <- 'deeppink'
+CD45RO.CD45er.col <- 'lightslateblue'
+```
+
+Create required directories.
+
+```{r}
+dir.create('Figure_2', showWarnings = FALSE)
+dir.create('Figure_4', showWarnings = FALSE)
+dir.create('Figure_6', showWarnings = FALSE)
+```
+
+Load data (3 samples).
+
+```{r}
+names.HIV_list <- c('2004', '2023Rep1', '2023Rep2')
+HIV_list <- list()
+for(i in 1:length(names.HIV_list)){
+  HIV_list[[i]] <- readRDS(paste0('Datasets/', names.HIV_list[i], '_initial_data.rds'))
+}
+names(HIV_list) <- names.HIV_list
+```
+
+Load Ptprc matrices.
+
+```{r}
+# References
+ref.2004.ptprc <- readRDS('Ptprc/Ptprc_2004_subset_100.rds')
+ref.2023Rep1.ptprc <- readRDS('Ptprc/Ptprc_2023Rep1_subset_100.rds')
+ref.2023Rep2.ptprc <- readRDS('Ptprc/Ptprc_2023Rep2_subset_100.rds')
+```
+
+Make lists of loaded data.
+
+```{r}
+ptprc_list <- list(ref.2004.ptprc, ref.2023Rep1.ptprc, ref.2023Rep2.ptprc)
+```
+
+## Adding other assay.
+
+We now add supplementary assays.
+
+# Add Ptprc assays
+
+Add Ptprc assays. Ptprc will be loaded for each percentage.
+
+```{r}
+percentages <- seq(5, 95, 5)
+
+for(i in 1:length(HIV_list)){
+  HIV.Ptprc <- ptprc_list[[i]]
+  HIV_list[[i]][['Ptprc']] <- CreateAssayObject(HIV.Ptprc)
+  for(perc in percentages){
+    ptprc.assay <- readRDS(paste0('Ptprc/Ptprc_', names(HIV_list)[i], '_subset_', perc, '.rds'))
+    HIV_list[[i]][[paste0('Ptprc', perc)]] <- CreateAssayObject(ptprc.assay)
+  }
+}
+```
+
+Add Ptprc assays computed by CD45er.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  CD45er.probs <- read.csv(paste0('../Benchmarks/GSE187515/', names(HIV_list)[i] , '/CD45er_Benchmark_0/isoform_probabilities.csv'))
+  CD45er.mat <- cbind(CD45er.probs[,4] + CD45er.probs[,6] + CD45er.probs[,8], CD45er.probs[,3]) %>% as.matrix %>% Matrix(.,sparse = T)
+  CD45er.mat <- aggregate.Matrix(CD45er.mat, CD45er.probs$CB) %>% t(.)
+  rownames(CD45er.mat) <- c('erCD45RA', 'erCD45RO')
+  
+  CD45er.mat <- CD45er.mat[,colnames(CD45er.mat) %in% colnames(HIV_list[[i]])]
+  
+  # create filler matrix
+  missing.barcodes <- colnames(HIV_list[[i]])[!(colnames(HIV_list[[i]]) %in% colnames(CD45er.mat))]
+  filler.matrix <- sparseMatrix(i = integer(0), j = integer(0),  dims = c(2, length(missing.barcodes)))
+  colnames(filler.matrix) <- missing.barcodes
+  
+  CD45er.mat.com <- cbind(CD45er.mat, filler.matrix)
+  CD45er.mat.com <- CD45er.mat.com[,order(colnames(CD45er.mat.com))]
+  HIV_list[[i]][['CD45er']] <- CreateAssayObject(CD45er.mat.com)
+}
+```
+
+# Processing
+
+Now we process consecutively each data set and then we integrate them together using STACAS. We won't do any filtering before integration but we'll have a look at each set to get an idea what it looks like.
+
+First, we look at quality of the data.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  VlnPlot(HIV_list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0) %>% print
+}
+```
+
+Looks ok. We'll eventually filter out high percent.mt, low and high feature count cells once integrated. Now process data and plot them.
+
+```{r, message=F, warning=F}
+res <- c(0.5, 0.5, 0.5)
+pca.dims <- c(20,20,20)
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]] <- NormalizeData(object = HIV_list[[i]])
+  HIV_list[[i]] <- FindVariableFeatures(HIV_list[[i]], selection.method = "vst",
+                                        nfeatures = 1000, verbose = FALSE)
+    
+  HIV_list[[i]] <- ScaleData(HIV_list[[i]], verbose = FALSE)
+  HIV_list[[i]] <- RunPCA(HIV_list[[i]], npcs = pca.dims[i], verbose = FALSE)
+  HIV_list[[i]] <- RunUMAP(HIV_list[[i]], reduction = "pca", dims = 1:20)
+    
+  HIV_list[[i]] <- FindNeighbors(HIV_list[[i]], dims = 1:pca.dims[i])
+  HIV_list[[i]] <- FindClusters(HIV_list[[i]], resolution = res[i])
+}
+```
+
+Plot.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  (DimPlot(HIV_list[[i]], label = T) + ggtitle(paste(names(HIV_list)[i], '- Clusters'))) %>% print
+  VlnPlot(HIV_list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0) %>% print
+  
+  (FeaturePlot(HIV_list[[i]], 'nFeature_RNA') + ggtitle(paste(names(HIV_list)[i], '- Feature Counts'))) %>% print
+}
+```
+
+Also normalize FB and Ptprc assay.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", assay = 'Antibodies', margin = 2)
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = "Ptprc")
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = "CD45er")
+  for(perc in percentages){
+    HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = paste0("Ptprc", perc))
+  }
+}
+```
+
+Plot features.
+
+```{r, fig.width=13, message = F, warning = F}
+for(i in 1:length(HIV_list)){
+  FeaturePlot(HIV_list[[i]], c('CD3', 'CD4', 'CD8A', 'MKI67', 'CD79A', 'KLRB1','IGHM'), min.cutoff = 0, ncol = 4) %>% print
+  FeaturePlot(HIV_list[[i]], c('antibodies_CD45RA', 'antibodies_CD45RO', 'antibodies_CD3', 'antibodies_CD4.1'),  min.cutoff = 0, ncol = 3) %>% print
+  FeaturePlot(HIV_list[[i]], c('ptprc_PTPRC-RA', 'ptprc_PTPRC-RO'), max.cutoff = 1) %>% print
+}
+```
+
+With decent sequencing depth this data set looks good for tests of Ptprc software.
+
+# Clean-up
+
+We perform DEA to see some genes for each data set and cluster.
+
+```{r}
+DEA.data <- list()
+
+for(i in 1:length(HIV_list)){
+  DEA.set <- FindAllMarkers(HIV_list[[i]], assay = 'RNA')
+  DEA.set <- DEA.set %>% dplyr::group_by(cluster) %>% dplyr::filter(row_number() <= 20)
+  DEA.data[[i]] <- DEA.set
+}
+```
+
+```{r}
+print(DEA.data)
+```
+
+We now remove following clusters from following data:
+* Clusters 5 and 7 (mostly dead cells, cluster 5 is border-line example though) plus cluster 10, which exhibits doublet-like features;
+* Clusters 7 (dead) and 9 (doublet-like) cells.
+* Clusters 8 (dead), 9 (weird and partially B-cells) and 10 (most likely doublets).
+
+```{r}
+HIV_list[[1]] <- subset(HIV_list[[1]], seurat_clusters %nin% c(5,7,10))
+HIV_list[[2]] <- subset(HIV_list[[2]], seurat_clusters %nin% c(7,9,10))
+HIV_list[[3]] <- subset(HIV_list[[3]], seurat_clusters %nin% c(8,9,10))
+```
+
+Now re-dimension and re-cluster.
+
+```{r, message=F, warning=F}
+res <- c(0.5, 0.5, 0.6)
+pca.dims <- c(20,20,20)
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]] <- NormalizeData(object = HIV_list[[i]])
+  HIV_list[[i]] <- FindVariableFeatures(HIV_list[[i]], selection.method = "vst",
+                                        nfeatures = 1000, verbose = FALSE)
+    
+  HIV_list[[i]] <- ScaleData(HIV_list[[i]], verbose = FALSE)
+  HIV_list[[i]] <- RunPCA(HIV_list[[i]], npcs = pca.dims[i], verbose = FALSE)
+  HIV_list[[i]] <- RunUMAP(HIV_list[[i]], reduction = "pca", dims = 1:20)
+    
+  HIV_list[[i]] <- FindNeighbors(HIV_list[[i]], dims = 1:pca.dims[i])
+  HIV_list[[i]] <- FindClusters(HIV_list[[i]], resolution = res[i])
+}
+```
+
+Plot.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  (DimPlot(HIV_list[[i]], label = T) + ggtitle(paste(names(HIV_list)[i], '- Clusters'))) %>% print
+  VlnPlot(HIV_list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0) %>% print
+  
+  (FeaturePlot(HIV_list[[i]], 'nFeature_RNA') + ggtitle(paste(names(HIV_list)[i], '- Feature Counts'))) %>% print
+}
+```
+
+Also re-normalize FB assay.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", assay = 'Antibodies', margin = 2)
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = "Ptprc")
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = "CD45er")
+  for(perc in percentages){
+    HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = paste0("Ptprc", perc))
+  }
+}
+```
+
+And plot.
+
+```{r, fig.width=13, message = F, warning = F}
+for(i in 1:length(HIV_list)){
+  FeaturePlot(HIV_list[[i]], c('CD3', 'CD4', 'CD8A', 'MKI67', 'CD79A', 'KLRB1'), min.cutoff = 0, ncol = 3) %>% print
+  FeaturePlot(HIV_list[[i]], c('antibodies_CD45RA', 'antibodies_CD45RO', 'antibodies_CD3', 'antibodies_CD4.1'),  min.cutoff = 0, ncol = 3) %>% print
+  FeaturePlot(HIV_list[[i]], c('ptprc_PTPRC-RA', 'ptprc_PTPRC-RO'), max.cutoff = 1) %>% print
+}
+```
+
+There are new clusters in data sets 2 and 3 that need to be handled:
+
+* Cluster 7 (dead) in data set 2;
+* Clusters 6 (dead), 9 (not CD4) and 11 (doublets) in last data set.
+
+We also remove cells with more than 10% of geneome mapping MT from every data-set.
+
+```{r}
+HIV_list[[2]] <- subset(HIV_list[[2]], seurat_clusters %nin% c(7) & percent.mt <= 10)
+HIV_list[[2]] <- subset(HIV_list[[2]], seurat_clusters %nin% c(7) & percent.mt <= 10)
+HIV_list[[3]] <- subset(HIV_list[[3]], seurat_clusters %nin% c(6,9,11) & percent.mt <= 10)
+```
+
+Now re-dimension and re-cluster.
+
+```{r, message=F, warning=F}
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]] <- NormalizeData(object = HIV_list[[i]])
+  HIV_list[[i]] <- FindVariableFeatures(HIV_list[[i]], selection.method = "vst",
+                                        nfeatures = 1000, verbose = FALSE)
+    
+  HIV_list[[i]] <- ScaleData(HIV_list[[i]], verbose = FALSE)
+  HIV_list[[i]] <- RunPCA(HIV_list[[i]], npcs = pca.dims[i], verbose = FALSE)
+  HIV_list[[i]] <- RunUMAP(HIV_list[[i]], reduction = "pca", dims = 1:20)
+    
+  HIV_list[[i]] <- FindNeighbors(HIV_list[[i]], dims = 1:20)
+  HIV_list[[i]] <- FindClusters(HIV_list[[i]], resolution = 0.5)
+}
+```
+
+Plot.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  (DimPlot(HIV_list[[i]], label = T) + ggtitle(paste(names(HIV_list)[i], '- Clusters'))) %>% print
+  VlnPlot(HIV_list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0) %>% print
+  
+  (FeaturePlot(HIV_list[[i]], 'nFeature_RNA') + ggtitle(paste(names(HIV_list)[i], '- Feature Counts'))) %>% print
+}
+```
+
+Also re-normalize FB assay.
+
+```{r}
+percentages <- seq(5, 95, 5)
+
+for(i in 1:length(HIV_list)){
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", assay = 'Antibodies', margin = 2)
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = "Ptprc")
+  HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = "CD45er")
+  for(perc in percentages){
+    HIV_list[[i]] <- NormalizeData(HIV_list[[i]], normalization.method = "CLR", margin = 2, assay = paste0("Ptprc", perc))
+  }
+}
+```
+
+And plot.
+
+```{r, fig.width=13, message = F, warning = F}
+for(i in 1:length(HIV_list)){
+  FeaturePlot(HIV_list[[i]], c('CD3', 'CD4', 'CD8A', 'MKI67', 'CD79A', 'KLRB1'), min.cutoff = 0, ncol = 3) %>% print
+  FeaturePlot(HIV_list[[i]], c('antibodies_CD45RA', 'antibodies_CD45RO', 'antibodies_CD3', 'antibodies_CD4.1'),  min.cutoff = 0, ncol = 3) %>% print
+  FeaturePlot(HIV_list[[i]], c('ptprc_PTPRC-RA', 'ptprc_PTPRC-RO'), max.cutoff = 1) %>% print
+}
+```
+
+Save final variants.
+
+```{r}
+for(i in 1:length(HIV_list)){
+  saveRDS(HIV_list[[i]], paste0('Datasets/dataset_', names(HIV_list)[i], '_finalized_data.rds'))
+}
+```
+
+## Integration
+
+We now integrate the data.
+
+```{r}
+HIV.integ.data <- Run.STACAS(HIV_list, anchor.features = 1000)
+```
+
+```{r}
+HIV.integ.data <- ScaleData(HIV.integ.data, verbose = FALSE)
+HIV.integ.data <- RunPCA(HIV.integ.data, npcs = 20, verbose = FALSE)
+HIV.integ.data <- RunUMAP(HIV.integ.data, reduction = "pca", dims = 1:20)
+  
+HIV.integ.data <- FindNeighbors(HIV.integ.data, dims = 1:20)
+HIV.integ.data <- FindClusters(HIV.integ.data, resolution = 0.5)
+```
+
+```{r}
+DimPlot(HIV.integ.data, label = T) + ggtitle('HIV-CD4+ analysis - unistimulated healthy controls\n - integration')
+VlnPlot(HIV.integ.data, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, pt.size = 0)
+DimPlot(HIV.integ.data, group.by = 'orig.ident', label = T) + ggtitle('HIV-CD4+ analysis - unistimulated healthy controls\n - integration')
+```
+
+```{r, warning = F, fig.width = 10}
+FeaturePlot(HIV.integ.data, c('antibodies_CD45RA', 'antibodies_CD45RO', 'ptprc_PTPRC-RA', 'ptprc_PTPRC-RO'))
+```
+
+Save integrated set.
+
+```{r}
+saveRDS(HIV.integ.data, 'Datasets/GSE187515_integrated_data.rds')
+```
+
+# DEA
+
+Generate overall Differential Expression Analysis.
+
+```{r}
+HIV.DEA.integrated <- FindAllMarkers(HIV.integ.data, assay = 'RNA', logfc.threshold = 1)
+```
+
+```{r}
+print(HIV.DEA.integrated %>% dplyr::group_by(cluster) %>% dplyr::filter(row_number() <= 20))
+```
+
+# Plotting relations
+
+We now plot graph of average log-normalized expression for each cluster. First we aggregate all into a single table.
+
+```{r}
+assay.counts.Atb <- HIV.integ.data[['Antibodies']] %>% .[c('CD45RA', 'CD45RO'),]
+assay.counts.Ptprc <- HIV.integ.data[['Ptprc']] %>% .[c('PTPRC-RA', 'PTPRC-RO'),]
+assay.counts.CD45er <- HIV.integ.data[['CD45er']] %>% .[c('erCD45RA', 'erCD45RO'),]
+
+clusters <- HIV.integ.data$seurat_clusters %>% as.character %>% as.numeric
+Ptprc.assay.counts <- cbind(t(assay.counts.Atb), t(assay.counts.Ptprc), t(assay.counts.CD45er), clusters) %>%
+  as.data.frame %>% dplyr::group_by(clusters) %>% 
+  dplyr::summarise(average.CD45RA.FB = mean(CD45RA),
+                   average.CD45RO.FB = mean(CD45RO),
+                   average.CD45RA.PTPRC = mean(`PTPRC-RA`),
+                   average.CD45RO.PTPRC = mean(`PTPRC-RO`),
+                   average.CD45RA.CD45er = mean(erCD45RA),
+                   average.CD45RO.CD45er = mean(erCD45RO))
+```
+
+We also perform linear fit on both relations between our software and Antibodies and our software vs. competing software.
+
+```{r}
+lm1.CD45RA <- lm(formula = average.CD45RA.PTPRC ~ average.CD45RA.FB, data = Ptprc.assay.counts)
+lm1.CD45RO <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RO.FB, data = Ptprc.assay.counts)
+
+lm1.CD45RA.bench <- lm(formula = average.CD45RA.PTPRC ~ average.CD45RA.CD45er, data = Ptprc.assay.counts)
+lm1.CD45RO.bench <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RO.CD45er, data = Ptprc.assay.counts)
+```
+
+Also compute Pearson's correlation coefficients.
+
+```{r}
+r.CD45RA <- cor(Ptprc.assay.counts$average.CD45RA.FB, Ptprc.assay.counts$average.CD45RA.PTPRC, method = 'pearson')
+r.CD45RO <- cor(Ptprc.assay.counts$average.CD45RO.FB, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
+r.CD45RA.bench <- cor(Ptprc.assay.counts$average.CD45RA.CD45er, Ptprc.assay.counts$average.CD45RA.PTPRC, method = 'pearson')
+r.CD45RO.bench <- cor(Ptprc.assay.counts$average.CD45RO.CD45er, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
+```
+
+Now plot IdAO ~ FB relation.
+
+```{r}
+scatterplot.lin.RA <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.FB, y = average.CD45RA.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.IDAO.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RA - average of log2-normalized expression for FB') + ylab('CD45RA - average of log2-normalized expression\n for software - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 1)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  annotate('text',  
+           col = CD45RA.IDAO.col, x = 1, y = 0.2, 
+           label = paste0('y = ', round(lm1.CD45RA$coefficients[2], 2), ' + ',  round(lm1.CD45RA$coefficients[1], 2), '\nr=', round(r.CD45RA,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RA$coefficients[2], intercept = lm1.CD45RA$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('Relation between average of log2-normalized counts for antibody reads
+           and sofware-computed reads per cluster for CD45RO isoform') +
+  theme_classic()
+
+print(scatterplot.lin.RA)
+
+
+scatterplot.lin.RO <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.FB, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RO.IDAO.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RO - average of log2-normalized expression for FB') + ylab('CD45RO - average of log2-normalized expression\n for software - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  annotate('text',  
+           col = CD45RO.IDAO.col, x = 0.6, y = 0.1, 
+           label = paste0('y = ', round(lm1.CD45RO$coefficients[2], 2), ' + ',  round(lm1.CD45RO$coefficients[1], 2), '\nr=', round(r.CD45RO,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RO$coefficients[2], intercept = lm1.CD45RO$coefficients[1], col = CD45RO.IDAO.col) +
+  ggtitle('Relation between average of log2-normalized counts for antibody reads
+           and sofware-computed reads per cluster for CD45RO isoform') +
+  theme_classic()
+
+print(scatterplot.lin.RO)
+```
+
+Do the same for IDAO ~ CD45re.
+
+```{r}
+scatterplot.lin.RA.bench <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.CD45er, y = average.CD45RA.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.IDAO.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RA - average of log2-normalized expression \nfor CD45er - detected reads') + ylab('CD45RA - average of log2-normalized expression\n for IdAO - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  annotate('text',  
+           col = CD45RA.IDAO.col, x = 0.4, y = 0.1, 
+           label = paste0('y = ', round(lm1.CD45RA.bench$coefficients[2], 2), ' + ',  round(lm1.CD45RA.bench$coefficients[1], 2), '\nr=', round(r.CD45RA.bench,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RA.bench$coefficients[2], intercept = lm1.CD45RA.bench$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('Relation between average of log2-normalized counts for  CD45er-computed reads
+           and IdAO-computed reads per cluster for CD45RO isoform') +
+  theme_classic()
+
+print(scatterplot.lin.RA.bench)
+
+
+scatterplot.lin.RO.bench <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.CD45er, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RO.IDAO.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RO - average of log2-normalized expression for \nCD45er - detected reads') + ylab('CD45RO - average of log2-normalized expression\n for IdAO - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  annotate('text',  
+           col = CD45RO.IDAO.col, x = 0.4, y = 0.1, 
+           label = paste0('y = ', round(lm1.CD45RO.bench$coefficients[2], 2), ' + ',  round(lm1.CD45RO.bench$coefficients[1], 2), '\nr=', round(r.CD45RO.bench,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RO.bench$coefficients[2], intercept = lm1.CD45RO.bench$coefficients[1], col = CD45RO.IDAO.col) +
+  ggtitle('Relation between average of log2-normalized counts for CD45er-computed reads
+           and sofware-computed reads per cluster for CD45RO isoform') +
+  theme_classic()
+
+print(scatterplot.lin.RO.bench)
+```
+
+# Annotation
+
+We use SingleR package for annotation.
+
+```{r}
+HIV.integ.data.counts <- GetAssayData(HIV.integ.data, assay = 'RNA', slot = 'data')
+```
+
+```{r}
+MonacoData <- MonacoImmuneData() 
+```
+
+```{r}
+HIV.integ.data.Immgen <- SingleR(HIV.integ.data.counts, MonacoData, MonacoData$label.main, fine.tune = T)
+HIV.integ.data$annotation.ImmGen <- HIV.integ.data.Immgen$pruned.labels
+
+HIV.integ.data.Immgen.fine <- SingleR(HIV.integ.data.counts, MonacoData, MonacoData$label.fine, fine.tune = T)
+HIV.integ.data$annotation.ImmGen.fine <- HIV.integ.data.Immgen.fine$pruned.labels
+```
+
+We now show generated annotations on UMAP plot.
+
+```{r, fig.width = 10}
+DimPlot(HIV.integ.data, group.by = 'annotation.ImmGen') + ggtitle('Annotation Immgen')
+DimPlot(HIV.integ.data, group.by = 'annotation.ImmGen.fine') + ggtitle('Annotation Immgen (fine)')
+```
+
+Save (update) integrated data set with annotation.
+
+```{r}
+saveRDS(HIV.integ.data, 'Datasets/GSE187515_integrated_data.rds')
+```
+
+# Generating figures
+
+Generate final figures. For each figure we generate Desired final plot and equivalent without text. 
+
+DimPlot:
+
+```{r}
+dim.plot.1 <- DimPlot(HIV.integ.data, label = T) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - Clustering') + 
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=5))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.spacing.y = unit(0.4, 'cm'))
+print(dim.plot.1) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_DimPlot.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(dim.plot.1)
+dev.off()
+```
+
+```{r}
+dim.plot.1.blank <- DimPlot(HIV.integ.data) + 
+  ggtitle('') + xlab('') + ylab('') +
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=5))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank(),
+        legend.spacing.y = unit(0.4, 'cm'))
+print(dim.plot.1.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_DimPlot_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(dim.plot.1.blank)
+dev.off()
+```
+
+Feature plots: PTPRC-RA (Features)
+
+```{r}
+fb.plot.RA.adt <- FeaturePlot(HIV.integ.data, 'CD45RA', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CD45RA - Antibodies') + 
+  scale_colour_gradient(breaks = c(0,3), low = 'grey85', high = CD45RA.FB.col) +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.RA.adt) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RA_Antibodies.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.RA.adt)
+dev.off()
+```
+
+```{r}
+fb.plot.RA.adt.blank <- FeaturePlot(HIV.integ.data, 'CD45RA', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,3), low = 'grey85', high = CD45RA.FB.col) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.RA.adt.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RA_Antibodies_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.RA.adt.blank)
+dev.off()
+```
+
+
+Feature plots: PTPRC-RA (Software-calculated)
+
+```{r}
+fb.plot.RA.calc <- FeaturePlot(HIV.integ.data, 'ptprc_PTPRC-RA', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CD45RA - Software') +
+  scale_colour_gradient(breaks = c(0,2), low = 'grey85', high = CD45RA.IDAO.col) +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.RA.calc) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RA_Software.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.RA.calc)
+dev.off()
+```
+
+```{r}
+fb.plot.RA.calc.blank <- FeaturePlot(HIV.integ.data, 'ptprc_PTPRC-RA', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,2), low = 'grey85', high = CD45RA.IDAO.col) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.RA.calc.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RA_Software_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.RA.calc.blank)
+dev.off()
+```
+
+Feature plots: PTPRC-RA (CD45er-calculated)
+
+```{r}
+fb.plot.RA.CD45er <- FeaturePlot(HIV.integ.data, 'erCD45RA', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CD45RA - CD45er') + 
+  scale_colour_gradient(breaks = c(0,1), low = 'grey85', high = CD45RA.CD45er.col) + 
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.RA.CD45er) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RA_CD45er.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.RA.CD45er)
+dev.off()
+```
+
+```{r}
+fb.plot.RA.CD45er.blank <- FeaturePlot(HIV.integ.data, 'erCD45RA', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,1), low = 'grey85', high = CD45RA.CD45er.col) + 
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.RA.CD45er.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RA_CD45er_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.RA.CD45er.blank)
+dev.off()
+```
+
+Feature plots: PTPRC-RO (Features)
+
+```{r}
+fb.plot.RO.adt <- FeaturePlot(HIV.integ.data, 'CD45RO', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CD45RO - Antibodies') + 
+  scale_colour_gradient(breaks = c(0,3), low = 'grey85', high = CD45RO.FB.col) + 
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.RO.adt) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RO_Antibodies.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.RO.adt)
+dev.off()
+```
+
+```{r}
+fb.plot.RO.adt.blank <- FeaturePlot(HIV.integ.data, 'CD45RO', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,3), low = 'grey85', high = CD45RO.FB.col) + 
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.RO.adt.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RO_Antibodies_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.RO.adt.blank)
+dev.off()
+```
+
+
+Feature plots: PTPRC-RO (Software-calculated)
+
+```{r}
+fb.plot.RO.calc <- FeaturePlot(HIV.integ.data, 'ptprc_PTPRC-RO', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CD45RO - Software') + 
+  scale_colour_gradient(breaks = c(0,1), low = 'grey85', high = CD45RO.IDAO.col) + 
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.RO.calc) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RO_Software.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.RO.calc)
+dev.off()
+```
+
+```{r}
+fb.plot.RO.calc.blank <- FeaturePlot(HIV.integ.data, 'ptprc_PTPRC-RO', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,1), low = 'grey85', high = CD45RO.IDAO.col) + 
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.RO.calc.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RO_Software_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.RO.calc.blank)
+dev.off()
+```
+
+Feature plots: PTPRC-RO (CD45er-calculated)
+
+```{r}
+fb.plot.RO.CD45er <- FeaturePlot(HIV.integ.data, 'erCD45RO', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CD45RO - CD45er') + 
+  scale_colour_gradient(breaks = c(0,1), low = 'grey85', high = CD45RO.CD45er.col) + 
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.RO.CD45er) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RO_CD45er.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.RO.CD45er)
+dev.off()
+```
+
+```{r}
+fb.plot.RO.CD45er.blank <- FeaturePlot(HIV.integ.data, 'erCD45RO', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,1), low = 'grey85', high = CD45RO.CD45er.col) + 
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.RO.CD45er.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CD45RO_CD45er_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.RO.CD45er.blank)
+dev.off()
+```
+
+We also plot some markers that are useful for complementary analysis: SELL, CCR7, CCL5 and GZMA.
+
+SELL:
+
+```{r}
+fb.plot.sell <- FeaturePlot(HIV.integ.data, 'SELL', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - SELL') + 
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.sell) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_SELL.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.sell)
+dev.off()
+```
+
+```{r}
+fb.plot.sell.blank <- FeaturePlot(HIV.integ.data, 'SELL', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.sell.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_SELL_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.sell.blank)
+dev.off()
+```
+
+CCL5:
+
+```{r}
+fb.plot.ccl5 <- FeaturePlot(HIV.integ.data, 'CCL5', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CCL5') + 
+  scale_colour_gradient(breaks = c(0,5), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.ccl5) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CCL5.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.ccl5)
+dev.off()
+```
+
+```{r}
+fb.plot.ccl5.blank <- FeaturePlot(HIV.integ.data, 'CCL5', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,5), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.ccl5.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CCL5_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.ccl5.blank)
+dev.off()
+```
+
+CCR7:
+
+```{r}
+fb.plot.ccr7 <- FeaturePlot(HIV.integ.data, 'CCR7', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - CCR7') + 
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.ccr7) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CCR7.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.ccr7)
+dev.off()
+```
+
+```{r}
+fb.plot.ccr7.blank <- FeaturePlot(HIV.integ.data, 'CCR7', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.ccr7.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_CCR7_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.ccr7.blank)
+dev.off()
+```
+
+GZMA:
+
+```{r}
+fb.plot.gzma <- FeaturePlot(HIV.integ.data, 'GZMA', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - GZMA') + 
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.gzma) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_GZMA.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.gzma)
+dev.off()
+```
+
+```{r}
+fb.plot.gzma.blank <- FeaturePlot(HIV.integ.data, 'GZMA', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.gzma.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_GZMA_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.gzma.blank)
+dev.off()
+```
+
+IL7R:
+
+```{r}
+fb.plot.gzma <- FeaturePlot(HIV.integ.data, 'IL7R', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - IL7R') + 
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.gzma) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_IL7R.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.gzma)
+dev.off()
+```
+
+```{r}
+fb.plot.gzma.blank <- FeaturePlot(HIV.integ.data, 'IL7R', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+print(fb.plot.gzma.blank) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_IL7R_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.gzma.blank)
+dev.off()
+```
+
+Plotting regression figures.
+
+```{r}
+tiff('Figure_2/GSE187515_scatter_RA.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figure_2/GSE187515_scatter_RO.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RO)
+dev.off()
+```
+
+As before, we make textless version.
+
+```{r}
+scatterplot.lin.RA.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.FB, y = average.CD45RA.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.IDAO.col, size = 4) +
+  xlab('') + ylab('\n') +
+  geom_abline(slope = lm1.CD45RA$coefficients[2], intercept = lm1.CD45RA$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 1)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  theme_classic() + 
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+print(scatterplot.lin.RA.blank)
+
+
+scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.FB, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RO.IDAO.col, size = 4) +
+  xlab('') + ylab('\n') + 
+  geom_abline(slope = lm1.CD45RO$coefficients[2], intercept = lm1.CD45RO$coefficients[1], col = CD45RO.IDAO.col) +
+  ggtitle('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+print(scatterplot.lin.RO.blank)
+```
+
+```{r}
+tiff('Figure_2/GSE187515_scatter_RA_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RA.blank)
+dev.off()
+```
+
+```{r}
+tiff('GSE187515_scatter_RO_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RO.blank)
+dev.off()
+```
+
+```{r}
+read.counts <- read.csv('counted_bam.txt', sep = '\t')
+read.counts <- aggregate(read.counts[,3, drop = F], list(read.counts$percent), sum)
+
+subset.stats <- data.frame(percentages = seq(5,100,5),
+                           read.count.div.cell = read.counts$read.count/35965,
+                           CD45RA.perc.pos.cells = rep(0,20),
+                           CD45RO.perc.pos.cells = rep(0,20),
+                           CD45RA.avg = rep(0,20),
+                           CD45RO.avg = rep(0,20),
+                           row.names = seq(5,100,5))
+
+for(perc in seq(5,95,5)){
+  counts.raw <- GetAssayData(HIV.integ.data, assay = paste0('Ptprc', perc), slot = 'count')
+  counts.RA <- counts.raw['PTPRC-RA',]
+  counts.RO <- counts.raw['PTPRC-RO',]
+  
+  subset.stats[as.character(perc),3] <- length(counts.RA[counts.RA > 0])
+  subset.stats[as.character(perc),4] <- length(counts.RO[counts.RO > 0]) 
+  subset.stats[as.character(perc),5] <- mean(counts.RA)
+  subset.stats[as.character(perc),6] <- mean(counts.RO)
+}
+
+counts.raw <- GetAssayData(HIV.integ.data, assay = 'Ptprc', slot = 'count')
+counts.RA <- counts.raw['PTPRC-RA',]
+counts.RO <- counts.raw['PTPRC-RO',]
+  
+subset.stats['100', 3] <- length(counts.RA[counts.RA > 0])
+subset.stats['100', 4] <- length(counts.RO[counts.RO > 0]) 
+subset.stats['100', 5] <- mean(counts.RA)
+subset.stats['100', 6] <- mean(counts.RO)
+
+subset.stats[,3] <- subset.stats[,3]/ncol(counts.raw)
+subset.stats[,4] <- subset.stats[,4]/ncol(counts.raw)
+```
+
+```{r}
+scatter.RA.frac.subs <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells)) +
+  geom_point(col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  xlab('(Total mapping reads number)/(Number of cells)') +
+  ylab('Fraction of cells with 1+ read of CD45RA') +
+  ggtitle('Evalution of fraction of cells with at least one read of CD45RA
+           for fraction of used cells') +
+  theme_classic()
+  
+scatter.RO.frac.subs <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells)) +
+  geom_point(col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  xlab('(Total mapping reads number)/(Number of cells)') + 
+  ylab('Fraction of cells with 1+ read of CD45RO') +
+  ggtitle('Evalution of fraction of cells with at least one read of CD45RO
+           for fraction of used cells') +
+  theme_classic()
+
+scatter.RA.avg.subs <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg)) +
+  geom_point(col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  xlab('(Total mapping reads number)/(Number of cells)') +
+  ylab('Number of cells with 1+ read of CD45RA') +
+  ggtitle('Average of log2-normalized counts of CD45RA reads
+           for fraction of used cells') +
+  theme_classic()
+  
+scatter.RO.avg.subs <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg)) +
+  geom_point(col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  xlab('(Total mapping reads number)/(Number of cells)') + 
+  ylab('Average of log2-normalized read count of CD45RO') +
+  ggtitle('Average of log2-normalized counts of CD45RO reads
+           for fraction of used cells') +
+  theme_classic()
+
+print(scatter.RA.frac.subs)
+print(scatter.RA.avg.subs)
+print(scatter.RO.frac.subs)
+print(scatter.RO.avg.subs)
+
+tiff('Figure_4/GSE187515_scatter_RA_frac_subs.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatter.RA.frac.subs)
+dev.off()
+
+tiff('Figure_4/GSE187515_scatter_RA_avg_subs.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatter.RA.avg.subs)
+dev.off()
+
+tiff('Figure_4/GSE187515_scatter_RO_frac_subs.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatter.RO.frac.subs)
+dev.off()
+
+tiff('Figure_4/GSE187515_scatter_RO_avg_subs.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatter.RO.avg.subs)
+dev.off()
+```
+
+Do same but blank.
+
+```{r}
+scatter.RA.frac.subs.blank <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells)) +
+  geom_point(col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  xlab('') +
+  ylab('') +
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+  
+scatter.RO.frac.subs.blank <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells)) +
+  geom_point(col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  xlab('') + 
+  ylab('') +
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+
+scatter.RA.avg.subs.blank <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg)) +
+  geom_point(col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  xlab('') +
+  ylab('') +
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+  
+scatter.RO.avg.subs.blank <- ggplot(subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg)) +
+  geom_point(col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  xlab('') + 
+  ylab('') +
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+
+print(scatter.RA.frac.subs.blank)
+print(scatter.RA.avg.subs.blank)
+print(scatter.RO.frac.subs.blank)
+print(scatter.RO.avg.subs.blank)
+
+tiff('Figure_4/GSE187515_scatter_RA_frac_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(scatter.RA.frac.subs.blank)
+dev.off()
+
+tiff('Figure_4/GSE187515_scatter_RA_avg_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(scatter.RA.avg.subs.blank)
+dev.off()
+
+tiff('Figure_4/GSE187515_scatter_RO_frac_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(scatter.RO.frac.subs.blank)
+dev.off()
+
+tiff('Figure_4/GSE187515_scatter_RO_avg_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(scatter.RO.avg.subs.blank)
+dev.off()
+```
+
+Do the same for benchmark graphs.
+
+```{r}
+tiff('Figure_6/GSE187515_scatter_RA_bench.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RA.bench)
+dev.off()
+```
+
+```{r}
+tiff('Figure_6/GSE187515_scatter_RO_bench.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RO.bench)
+dev.off()
+```
+
+```{r}
+scatterplot.lin.RA.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.CD45er, y = average.CD45RA.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.IDAO.col, size = 4) +
+  xlab('\n') + ylab('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  geom_abline(slope = lm1.CD45RA.bench$coefficients[2], intercept = lm1.CD45RA.bench$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+print(scatterplot.lin.RA.bench.blank)
+
+
+scatterplot.lin.RO.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.CD45er, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RO.IDAO.col, size = 4) +
+  xlab('\n') + ylab('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  geom_abline(slope = lm1.CD45RO.bench$coefficients[2], intercept = lm1.CD45RO.bench$coefficients[1], col = CD45RO.IDAO.col) +
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+print(scatterplot.lin.RO.bench.blank)
+```
+
+```{r}
+tiff('Figure_6/GSE187515_scatter_RA_bench_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RA.bench.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_6/GSE187515_scatter_RO_bench_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RO.bench.blank)
+dev.off()
+```
+
+# Linear regression for subset data
+
+We now generate and plot linear regression for all subset data. For this, it is first required to get average data per cluster.
+
+```{r}
+Ptprc_assays <- c(paste0("Ptprc", percentages), 'Ptprc')
+
+assay.counts.Atb <- HIV.integ.data[['Antibodies']] %>% .[c('CD45RA', 'CD45RO'),]
+Ptprc.assay.counts <- t(assay.counts.Atb)
+colnames(Ptprc.assay.counts) <- c('Atb.Ptprc.RA', 'Atb.Ptprc.RO') 
+  
+for(i in 1:length(Ptprc_assays)){
+  assay.counts.Ptprc <- HIV.integ.data[[Ptprc_assays[[i]]]] %>% .[c('PTPRC-RA', 'PTPRC-RO'),]
+  rownames(assay.counts.Ptprc) <- paste(Ptprc_assays[[i]], c('RA', 'RO'), sep = '.')
+  Ptprc.assay.counts <- cbind(Ptprc.assay.counts, t(assay.counts.Ptprc))
+}
+
+clusters <- HIV.integ.data$seurat_clusters %>% as.character %>% as.numeric
+Ptprc.assay.counts <- cbind(Ptprc.assay.counts, clusters)
+
+sum.names <- colnames(Ptprc.assay.counts)[1:(ncol(Ptprc.assay.counts) - 1)]
+
+Ptprc.assay.counts <- Ptprc.assay.counts %>%
+  as.data.frame %>% dplyr::group_by(clusters) %>% 
+  dplyr::summarize_at(sum.names, mean) 
+
+# Long format
+Ptprc.assay.counts.long <- Ptprc.assay.counts %>% pivot_longer(cols = -c(clusters, Atb.Ptprc.RA, Atb.Ptprc.RO), names_to = 'Ptprc') %>%
+  dplyr::mutate(percent = ifelse(!is.na(str_extract(Ptprc,"[0-9]+")), str_extract(Ptprc,"[0-9]+"), 100) %>% as.numeric %>% as.factor())
+```
+
+Now get regression for each case. We also directly turn it into table with coefficients.
+
+```{r}
+regressions.RA <- list()
+regressions.RO <- list()
+
+reg.data.RA <- data.frame(percent = seq(5,100,5),
+                          intercept = rep(0, length(Ptprc_assays)), 
+                          intercept.p = rep(0, length(Ptprc_assays)), 
+                          slope = rep(0, length(Ptprc_assays)), 
+                          slope.p = rep(0, length(Ptprc_assays)))
+reg.data.RO <- data.frame(percent = seq(5,100,5),
+                          intercept = rep(0, length(Ptprc_assays)), 
+                          intercept.p = rep(0, length(Ptprc_assays)), 
+                          slope = rep(0, length(Ptprc_assays)), 
+                          slope.p = rep(0, length(Ptprc_assays)))
+
+for(i in 1:length(Ptprc_assays)){
+  regressions.RA[[i]] <- lm(formula = paste0(Ptprc_assays[[i]], '.RA', ' ~ Atb.Ptprc.RA'), data = Ptprc.assay.counts)
+  regressions.RO[[i]] <- lm(formula = paste0(Ptprc_assays[[i]], '.RO', ' ~ Atb.Ptprc.RO'), data = Ptprc.assay.counts)
+  reg.data.RA[i,2:5] <- c(regressions.RA[[i]]$coefficients[1],summary(regressions.RA[[i]])$coefficients[1,4],
+                       regressions.RA[[i]]$coefficients[2],summary(regressions.RA[[i]])$coefficients[2,4])
+  reg.data.RO[i,2:5] <- c(regressions.RO[[i]]$coefficients[1],summary(regressions.RO[[i]])$coefficients[1,4],
+                       regressions.RO[[i]]$coefficients[2],summary(regressions.RO[[i]])$coefficients[2,4])
+}
+```
+
+Plot linear regression with some of above lines.
+
+```{r, message= F, warning = F, fig.width=6, fig.height=6}
+ggplot(reg.data.RA %>% dplyr::filter(percent%%10 == 0) %>% dplyr::mutate(percent = as.factor(percent))) +
+  geom_abline(aes(intercept = intercept, slope = slope, color = percent)) +
+  geom_point(data = Ptprc.assay.counts.long %>% dplyr::filter(Ptprc %in% c('Ptprc10.RA','Ptprc50.RA', 'Ptprc.RA')) %>% dplyr::mutate(clusters = as.factor(clusters)), 
+             aes(x = Atb.Ptprc.RA, y = value, label = clusters, color = percent, shape = clusters), size = 2) +
+  scale_shape_manual(values=1:length(unique(Ptprc.assay.counts.long$clusters))) +
+  xlab('Average expression of PTPRC-RA by FB') +
+  ylab('Average expression of PTPRC-RO by IDEIS') +
+  ggtitle('Correlation of PTPRC-RA as detected by FB and IDEIS\n for various subset values') +
+  theme_classic()
+
+ggplot(reg.data.RO %>% dplyr::filter(percent%%10 == 0) %>% dplyr::mutate(percent = as.factor(percent))) +
+  geom_abline(aes(intercept = intercept, slope = slope, color = percent)) +
+  geom_point(data = Ptprc.assay.counts.long %>% dplyr::filter(Ptprc %in% c('Ptprc10.RO','Ptprc50.RO', 'Ptprc.RO')) %>% dplyr::mutate(clusters = as.factor(clusters)), 
+             aes(x = Atb.Ptprc.RO, y = value, label = clusters, color = percent, shape = clusters), size = 2) +
+  scale_shape_manual(values=1:length(unique(Ptprc.assay.counts.long$clusters))) +
+  xlab('Average expression of PTPRC-RO by FB') +
+  ylab('Average expression of PTPRC-RO by IDEIS') +
+  ggtitle('Correlation of PTPRC-RO as detected by FB and IDEIS\n for various subset values') +
+  theme_classic()
+ 
+```
+
+# Extrapolation of values for number of required reads.
+
+Now we will use fit of square root function and extrapolation of limits. Table with required data is already computed.
+
+```{r}
+print(subset.stats)
+```
+
+```{r}
+subset.stats.squared <- subset.stats %>% dplyr::mutate(read.count.div.cell.1 = read.count.div.cell^(1/4),
+                                                       read.count.div.cell.2 = log(read.count.div.cell,10))
+
+quadratic.fit.ppc.RA <- lm(data = subset.stats.squared, CD45RA.perc.pos.cells ~ read.count.div.cell.1)
+quadratic.fit.ppc.RO <- lm(data = subset.stats.squared, CD45RO.perc.pos.cells ~ read.count.div.cell.1)
+quadratic.fit.avg.RA <- lm(data = subset.stats.squared, CD45RA.avg ~ read.count.div.cell.2)
+quadratic.fit.avg.RO <- lm(data = subset.stats.squared, CD45RO.avg ~ read.count.div.cell.2)
+```
+
+Now do predictions for higher ranges and plot them
+
+```{r}
+read.count.div.cell.range <- seq(1, 100, 1) * 10^3
+predictions.ppc.RA <- predict(quadratic.fit.ppc.RA, list(read.count.div.cell = read.count.div.cell.range, read.count.div.cell.1 = read.count.div.cell.range^(1/4)))
+predictions.ppc.RA.frame <- data.frame(read.count.div.cell = read.count.div.cell.range,  quadratic.fit.ppc.RA = predictions.ppc.RA)
+
+ggplot() +
+ geom_point(data = subset.stats.squared, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells, color = 'Subsampled')) +
+ geom_line(data = predictions.ppc.RA.frame, aes(x = read.count.div.cell, y = quadratic.fit.ppc.RA, color = 'Predicted')) +
+ xlab('Reads per cells') + ylab('Fraction of cells that are PTPRC-RA positive') +
+ ggtitle('Fraction of cells that are PTPRC-RA+ \n -Prediction') +
+ guides(color=guide_legend("")) +
+ scale_color_manual(
+   values = c('Subsampled' = "firebrick3", 'Predicted' = "firebrick1")
+ ) +
+ theme_classic()
+
+read.count.div.cell.range <- seq(1, 100, 1) * 10^3
+predictions.ppc.RO <- predict(quadratic.fit.ppc.RO, list(read.count.div.cell = read.count.div.cell.range, read.count.div.cell.1 = read.count.div.cell.range^(1/4)))
+predictions.ppc.RO.frame <- data.frame(read.count.div.cell = read.count.div.cell.range,  quadratic.fit.ppc.RO = predictions.ppc.RO)
+
+ggplot() +
+ geom_point(data = subset.stats.squared, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells, color = 'Subsampled')) +
+ geom_line(data = predictions.ppc.RO.frame, aes(x = read.count.div.cell, y = quadratic.fit.ppc.RO, color = 'Predicted')) +
+ xlab('Reads per cells') + ylab('Fraction of cells that are PTPRC-RO positive') +
+ ggtitle('Fraction of cells that are PTPRC-RO+ \n -Prediction') +
+ guides(color=guide_legend("")) +
+ scale_color_manual(
+   values = c('Subsampled' = "darkorchid3", 'Predicted' = "darkorchid1")
+ ) +
+ theme_classic()
+
+read.count.div.cell.range <- seq(1, 100, 1) * 10^3
+predictions.avg.RA <- predict(quadratic.fit.avg.RA, list(read.count.div.cell = read.count.div.cell.range, read.count.div.cell.2 = log(read.count.div.cell.range, 10)))
+predictions.avg.RA.frame <- data.frame(read.count.div.cell = read.count.div.cell.range,  quadratic.fit.avg.RA = predictions.avg.RA)
+
+ggplot() +
+ geom_point(data = subset.stats.squared, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells, color = 'Subsampled')) +
+ geom_line(data = predictions.avg.RA.frame, aes(x = read.count.div.cell, y = quadratic.fit.avg.RA, color = 'Predicted')) +
+ xlab('Reads per cells') + ylab('Fraction of cells that are PTPRC-RA positive') +
+ ggtitle('Average PTPRC_RA expression in cells \n - Prediction') +
+ guides(color=guide_legend("")) +
+ scale_color_manual(
+   values = c('Subsampled' = "firebrick3", 'Predicted' = "firebrick1")
+ ) +
+ theme_classic()
+```
+
+# Fitting Two-parameter Relative model
+
+We now try to fit model Y = a*X/(X+b). This model was chosen because all values here should exhibit asymptotic behavior and this model has shown behaviour than regular asymptotic regression model. We use nls package for this purpose. First show data to plot again.
+
+```{r}
+print(subset.stats)
+```
+
+Now use fit for all variables of interest to model Y = a*X/(X+b).
+
+```{r, warning = F}
+CD45RA.ppc.nls.reg <- nls(CD45RA.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=1, b=1))
+CD45RO.ppc.nls.reg <- nls(CD45RO.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=1, b=1))
+CD45RA.avg.nls.reg <- nls(CD45RA.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=1, b=1))
+CD45RO.avg.nls.reg <- nls(CD45RO.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=1, b=1))
+
+CD45RA.ppc.nls <- summary(CD45RA.ppc.nls.reg)
+CD45RO.ppc.nls <- summary(CD45RO.ppc.nls.reg)
+CD45RA.avg.nls <- summary(CD45RA.avg.nls.reg)
+CD45RO.avg.nls <- summary(CD45RO.avg.nls.reg)
+
+print(CD45RA.ppc.nls)
+print(CD45RO.ppc.nls)
+print(CD45RA.avg.nls)
+print(CD45RO.avg.nls)
+```
+
+Now plot them. 
+
+```{r, warning=F}
+new.interval <- expand.grid(read.count.div.cell = seq(0, 100, 1)*1000)
+CD45RA.ppc.pred <- predict(CD45RA.ppc.nls.reg, newdata = new.interval)
+CD45RO.ppc.pred <- predict(CD45RO.ppc.nls.reg, newdata = new.interval)
+CD45RA.avg.pred <- predict(CD45RA.avg.nls.reg, newdata = new.interval)
+CD45RO.avg.pred <- predict(CD45RO.avg.nls.reg, newdata = new.interval)
+```
+
+We now reformat data to prepare them for plotting.
+
+```{r}
+CD45RA.ppc.pred <- cbind(new.interval, CD45RA.ppc.pred) %>% dplyr::rename('Prediction' = 'CD45RA.ppc.pred')
+CD45RO.ppc.pred <- cbind(new.interval, CD45RO.ppc.pred) %>% dplyr::rename('Prediction' = 'CD45RO.ppc.pred')
+CD45RA.avg.pred <- cbind(new.interval, CD45RA.avg.pred) %>% dplyr::rename('Prediction' = 'CD45RA.avg.pred')
+CD45RO.avg.pred <- cbind(new.interval, CD45RO.avg.pred) %>% dplyr::rename('Prediction' = 'CD45RO.avg.pred')
+```
+
+Plot all of the above.
+
+```{r}
+mm.RA.ppc <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells), col = CD45RA.IDAO.col) +
+  geom_line(col = 'firebrick2') +
+  geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RA.ppc.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2], yend = CD45RA.ppc.nls$coefficients[1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RA.ppc.nls$coefficients[2,1], y = 0, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('Average number of reads per cell') +
+  ylab('Fraction of cells with CD45RA') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Number of cells showing at least one read of CD45RA depending on\n average number of cells per read') +
+  theme_classic()
+
+mm.RO.ppc <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells), col = CD45RO.IDAO.col) +
+  geom_line(col = 'darkorchid2') +
+  geom_hline(yintercept = CD45RO.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RO.ppc.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  xlab('Average number of reads per cell') +
+  ylab('Fraction of cells with CD45RO') +
+  geom_segment(x = 0, y = CD45RO.ppc.nls$coefficients[1,1]/2, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RO.ppc.nls$coefficients[2,1], y = 0, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +  
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Number of cells showing at least one read of CD45RO depending on\n average number of cells per read') +
+  theme_classic()
+
+mm.RA.avg <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg), col = CD45RA.IDAO.col) +
+  geom_line(col = 'firebrick2') +
+  geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RA.avg.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RA.avg.nls$coefficients[2,1], y = 0, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('Average number of reads per cell') +
+  ylab('Average normalized expression of CD45RA') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Average normalized CD45RA counts on\n average number of cells per read') +
+  theme_classic()
+
+mm.RO.avg <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg), col = CD45RO.IDAO.col) +
+  geom_line(col = 'darkorchid2') +
+  geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RO.avg.nls$coefficients[1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RO.avg.nls$coefficients[2], y = 0, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('Average number of reads per cell') +
+  ylab('Average normalized expression of CD45RO') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Average normalized CD45RO counts on\n average number of cells per read') +
+  theme_classic()
+
+print(mm.RA.ppc)
+print(mm.RO.ppc)
+print(mm.RA.avg)
+print(mm.RO.avg)
+```
+
+Write.
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RA_ppc_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.ppc)
+dev.off()
+```
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RO_ppc_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.ppc)
+dev.off()
+```
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RA_avg_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.avg)
+dev.off()
+```
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RO_avg_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.avg)
+dev.off()
+```
+
+Make blank plots.
+
+```{r}
+mm.RA.ppc.blank <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells), col = CD45RA.IDAO.col) +
+  geom_line(col = 'firebrick2') +
+  geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RA.ppc.nls$coefficients[2], y = 0, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('') +
+  ylab('') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+mm.RO.ppc.blank <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells), col = CD45RO.IDAO.col) +
+  geom_line(col = 'darkorchid2') +
+  geom_hline(yintercept = CD45RO.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  xlab('') +
+  ylab('') +
+  geom_segment(x = 0, y = CD45RO.ppc.nls$coefficients[1,1]/2, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RO.ppc.nls$coefficients[2,1], y = 0, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +  
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+mm.RA.avg.blank <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg), col = CD45RA.IDAO.col) +
+  geom_line(col = 'firebrick2') +
+  geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RA.avg.nls$coefficients[2,1], y = 0, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('') +
+  ylab('') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+mm.RO.avg.blank <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg), col = CD45RO.IDAO.col) +
+  geom_line(col = 'darkorchid2') +
+  geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RO.avg.nls$coefficients[2,1], y = 0, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('') +
+  ylab('') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+print(mm.RA.ppc.blank)
+print(mm.RO.ppc.blank)
+print(mm.RA.avg.blank)
+print(mm.RO.avg.blank)
+```
+
+Write.
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RA_ppc_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.ppc.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RO_ppc_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.ppc.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RA_avg_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.avg.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_4/GSE187515_scatter_RO_avg_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.avg.blank)
+dev.off()
+```

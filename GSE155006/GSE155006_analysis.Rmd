@@ -1,0 +1,506 @@
+---
+title: "GSE155006"
+author: "Juraj Michalik"
+date: "2023-07-25"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+Analysis of Cd45/Ptprc isoforms from CD45+ cells from various murine organs. These data lack FB so we need to use standard markers to identify cell types and see the match with Cd45 isoform expression.
+Paper: https://www.sciencedirect.com/science/article/pii/S1074761320304921?via%3Dihub
+
+Run this script once GSE155006_preparation.Rmd and IDEIS were run.
+
+# Initialization
+
+## Creating objects
+
+Load libraries.
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(future)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(dbscan)
+library(scatterpie)
+library(reshape2)
+library(ggrepel)
+library(scds)
+library(SingleCellExperiment)
+library(STACAS)
+library(SingleR)
+library(celldex)
+
+# negation of %in% 
+`%nin%` = Negate(`%in%`)
+```
+
+```{r}
+CD45RA.col <- 'firebrick3'
+CD45RB.col <- 'green4'
+CD45RC.col <- 'gray20'
+CD45RO.col <- 'darkorchid2'
+```
+
+Create required directories.
+
+```{r}
+dir.create('Figure_5', showWarnings = FALSE)
+```
+
+Load data initialized beforehand (8 samples).
+
+```{r}
+mm.mog.list <- list()
+names.files <- c('Liver_Aged', 'Liver_Young', 'Lungs_Aged', 'Lungs_Young',
+                 'Peritoneal_Cells_Aged', 'Peritoneal_Cells_Young', 'Spleen_Aged', 'Spleen_Young')
+
+for(i in 1:length(names.files)){
+  mm.mog.list[[i]] <- readRDS(paste0('Datasets/', names.files[i], '_initial_data.rds'))
+}
+names(mm.mog.list) <- names.files
+```
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  mm.mog.ptprc <- readRDS(paste0('Ptprc/Ptprc_', mog.names[i], '.rds'))
+  mm.mog.list[[i]][['Ptprc']] <- CreateAssayObject(mm.mog.ptprc)
+}
+```
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  print(VlnPlot(mm.mog.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0))
+}
+```
+
+```{r warning=F, message=F}
+for(i in 1:length(mm.mog.list)){
+  mm.mog.list[[i]] <- NormalizeData(object = mm.mog.list[[i]])
+  mm.mog.list[[i]] <- FindVariableFeatures(mm.mog.list[[i]], selection.method = "vst",
+                                        nfeatures = 1000, verbose = FALSE)
+    
+  mm.mog.list[[i]] <- ScaleData(mm.mog.list[[i]], verbose = FALSE)
+  mm.mog.list[[i]] <- RunPCA(mm.mog.list[[i]], npcs = 20, verbose = FALSE)
+  mm.mog.list[[i]] <- RunUMAP(mm.mog.list[[i]], reduction = "pca", dims = 1:20)
+    
+  mm.mog.list[[i]] <- FindNeighbors(mm.mog.list[[i]], dims = 1:20)
+  mm.mog.list[[i]] <- FindClusters(mm.mog.list[[i]], resolution = 0.5)
+}
+```
+
+
+```{r}
+titles <- c('MM Aged Liver', 'MM Young Liver', 'MM Aged Lungs', 'MM Young Lungs', 'MM Aged Peritoneal cells', 'MM Young Peritoneal Cells', 'MM Aged Spleen', 'MM Young Spleen')
+for(i in 1:length(mm.mog.list)){
+  DimPlot(mm.mog.list[[i]], label = T) + ggtitle(titles[[i]])
+  VlnPlot(mm.mog.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0)
+}
+```
+
+```{r, warning = F, fig.width = 10}
+for(i in 1:length(mm.mog.list)){
+  print(FeaturePlot(mm.mog.list[[i]], c('Ptprc-RA', 'Ptprc-RB', 'Ptprc-RC', 'Ptprc-RO')))
+}
+```
+
+# Cleaning data
+
+We now prepare and clean data. First we perform DEA to see some genes for each data set and cluster.
+
+```{r}
+DEA.data <- list()
+
+for(i in 1:length(mm.mog.list)){
+  DEA.set <- FindAllMarkers(mm.mog.list[[i]], assay = 'RNA')
+  DEA.set <- DEA.set %>% dplyr::group_by(cluster) %>% dplyr::filter(row_number() <= 20)
+  DEA.data[[i]] <- DEA.set
+}
+```
+
+
+```{r}
+print(DEA.data)
+```
+
+We show some of markers for each case.
+
+```{r, fig.width = 10}
+for(i in 1:length(mm.mog.list)){
+  print(FeaturePlot(mm.mog.list[[i]], c('Cd8a', 'Cd8b1', 'Cd4', 'Ptprc','Cd79a', 'Mki67'), ncol = 3))
+}
+```
+
+Now we remove following:
+
+* Cluster 10 from Aged Lives samples (lacks CD45);
+* Cluster 1 from Young Liver samples (lacks CD45), and cluster 5 (dead);
+* Cluster 9 from Aged Lung samples (dead cells);
+* Cluster 11 (dead) and 14, 15 from Young Lung samples (lacks CD45);
+* Cluster 4 from Aged Peritoneal Cell samples (dead);
+* Cluster 8 from Young Peritoneal Cell samples (dead);
+* Cluster 1 from Aged Spleen samples (dead);
+* Clusters 2 and 7 from Young Spleen samples (lacks CD45).
+ 
+We then follow-up with re-mapping and clustering. All cells with more than 10% of gene mapping to MT will be also removed.
+
+```{r warning=F, message=F}
+mm.mog.list[[1]] <- subset(mm.mog.list[[1]], seurat_clusters %nin% c(10) & percent.mt <= 10)
+mm.mog.list[[2]] <- subset(mm.mog.list[[2]], seurat_clusters %nin% c(1,5) & percent.mt <= 10)
+mm.mog.list[[3]] <- subset(mm.mog.list[[3]], seurat_clusters %nin% c(9) & percent.mt <= 10)
+mm.mog.list[[4]] <- subset(mm.mog.list[[4]], seurat_clusters %nin% c(11, 14, 15) & percent.mt <= 10)
+mm.mog.list[[5]] <- subset(mm.mog.list[[5]], seurat_clusters %nin% c(4) & percent.mt <= 10)
+mm.mog.list[[6]] <- subset(mm.mog.list[[6]], seurat_clusters %nin% c(8) & percent.mt <= 10)
+mm.mog.list[[7]] <- subset(mm.mog.list[[7]], seurat_clusters %nin% c(1) & percent.mt <= 10)
+mm.mog.list[[8]] <- subset(mm.mog.list[[8]], seurat_clusters %nin% c(2, 7) & percent.mt <= 10)
+```
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  mm.mog.list[[i]] <- NormalizeData(object = mm.mog.list[[i]])
+  mm.mog.list[[i]] <- FindVariableFeatures(mm.mog.list[[i]], selection.method = "vst",
+                                           nfeatures = 1000, verbose = FALSE)
+    
+  mm.mog.list[[i]] <- ScaleData(mm.mog.list[[i]], verbose = FALSE)
+  mm.mog.list[[i]] <- RunPCA(mm.mog.list[[i]], npcs = 20, verbose = FALSE)
+  mm.mog.list[[i]] <- RunUMAP(mm.mog.list[[i]], reduction = "pca", dims = 1:20)
+    
+  mm.mog.list[[i]] <- FindNeighbors(mm.mog.list[[i]], dims = 1:20)
+  mm.mog.list[[i]] <- FindClusters(mm.mog.list[[i]], resolution = 0.5)
+}
+```
+
+Normalize assays with Ptprc.
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  mm.mog.list[[i]] <- NormalizeData(mm.mog.list[[i]], normalization.method = "CLR", margin = 2, assay = "Ptprc")
+}
+```
+
+```{r}
+fig.titles <- c('MM Aged Liver', 'MM Young Liver', 'MM Aged Lungs', 'MM Young Lungs',
+                'MM Aged Peritoneal Cells', 'MM Young Peritoneal Cells', 'MM Aged Spleen', 'MM Young Spleen')
+for(i in 1:length(mm.mog.list)){
+  DimPlot(mm.mog.list[[i]], label = T) + ggtitle(fig.titles[i])
+  VlnPlot(mm.mog.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0)
+}
+```
+
+```{r, warning = F, fig.width = 10}
+for(i in 1:length(mm.mog.list)){
+  FeaturePlot(mm.mog.list[[i]], c('Ptprc-RA', 'Ptprc-RB', 'Ptprc-RC', 'Ptprc-RO'))
+}
+```
+
+Save all sample data sets.
+
+```{r}
+for(i in 1:length(mm.mog.list)){
+  saveRDS(mm.mog.list[[i]], paste0('Datasets/', names(mm.mog.list)[i], '_finalized_data.rds'))
+}
+```
+
+# Integration
+
+We now integrate the data.
+
+```{r}
+mm.mog.integ.data <- Run.STACAS(mm.mog.list, anchor.features = 1000)
+```
+
+```{r}
+mm.mog.integ.data <- ScaleData(mm.mog.integ.data, verbose = FALSE)
+mm.mog.integ.data <- RunPCA(mm.mog.integ.data, npcs = 20, verbose = FALSE)
+mm.mog.integ.data <- RunUMAP(mm.mog.integ.data, reduction = "pca", dims = 1:20)
+  
+mm.mog.integ.data <- FindNeighbors(mm.mog.integ.data, dims = 1:20)
+mm.mog.integ.data <- FindClusters(mm.mog.integ.data, resolution = 0.8)
+```
+
+```{r}
+DimPlot(mm.mog.integ.data, label = T) + ggtitle('CD45+ T cells in Young and Aged mice data integration')
+VlnPlot(mm.mog.integ.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0)
+DimPlot(mm.mog.integ.data, group.by = 'orig.ident') + ggtitle('CD45+ T cells in Young and Aged mice data integration')
+```
+
+```{r, warning = F, fig.width = 10}
+FeaturePlot(mm.mog.integ.data, c('Ptprc-RA', 'Ptprc-RB', 'Ptprc-RC', 'Ptprc-RO'))
+```
+
+Save integrated data sets.
+
+```{r}
+saveRDS(mm.mog.integ.data, 'Datasets/GSE155006_integrated_data.rds')
+```
+
+```{r}
+mm.mog.DEA.integrated <- FindAllMarkers(mm.mog.integ.data, assay = 'RNA', logfc.threshold = 1)
+```
+
+```{r}
+print(mm.mog.DEA.integrated %>% dplyr::group_by(cluster) %>% dplyr::filter(row_number() <= 20))
+```
+
+Print some interesting genes.
+
+```{r, fig.width = 14}
+FeaturePlot(mm.mog.integ.data, c('Ptprc', 'Cd79a', 'Cd79b', 'Cd3d', 'Cd3e', 'Cd4', 'Cd8a', 'Cd8b1', 'Ms4a1', 'C1qc'), ncol = 4, min.cutoff = 0)
+VlnPlot(mm.mog.integ.data, c('Ptprc', 'Cd8a', 'Cd8b1', 'Cd4', 'Ms4a1'), ncol = 3)
+```
+
+We notice following:
+
+* Cluster 25 lacks Ptprc and shows presence of genes such as Cyp11a1 typical for adrenals. Most likely these are not immune cells, so we reject them.
+* Cluster 2 lacks any interesting markers beyond infection so we'll remove it as well.
+* Clusters 3 and 18 have significant lack of Cd45/Ptprc and presence of macrophage markers, so they'll get eliminated as well.
+* Cluster 19 contains mainly proliferating cells and lacks Ptprc.
+* Cluster 15 contains markers for both B-cells and T-cells, so we remove this cluster as well.
+* Clusters 20, 23 and 24 are small and also relatively low on Ptprc count, plus they're hard to identify.
+* Cluster 22 is small and hard to identify, so it gets removed as well.
+
+We remove all cells then perform splitting, re-normalization and reintegration.
+
+```{r}
+mm.mog.integ.data.all <- mm.mog.integ.data
+```
+
+```{r}
+mm.mog.integ.data <- subset(mm.mog.integ.data, seurat_clusters %nin% c(2, 3, 15, 18, 19, 20, 22, 23, 24, 25))
+```
+
+```{r}
+mm.mog.list.split <- SplitObject(mm.mog.integ.data, split.by = 'orig.ident')
+for(i in 1:length(mm.mog.list.split)){
+  DefaultAssay(mm.mog.list.split[[i]]) <- 'RNA'
+  mm.mog.list.split[[i]] <- NormalizeData(object = mm.mog.list.split[[i]])
+
+  mm.mog.list.split[[i]] <- NormalizeData(mm.mog.list.split[[i]], normalization.method = "CLR", margin = 2, assay = "Ptprc")
+}
+```
+
+Now reintegrate.
+
+```{r}
+mm.mog.integ.data <- Run.STACAS(mm.mog.list.split, anchor.features = 700)
+```
+
+```{r}
+mm.mog.integ.data <- ScaleData(mm.mog.integ.data, verbose = FALSE)
+mm.mog.integ.data <- RunPCA(mm.mog.integ.data, npcs = 20, verbose = FALSE)
+mm.mog.integ.data <- RunUMAP(mm.mog.integ.data, reduction = "pca", dims = 1:20)
+  
+mm.mog.integ.data <- FindNeighbors(mm.mog.integ.data, dims = 1:20)
+mm.mog.integ.data <- FindClusters(mm.mog.integ.data, resolution = 0.3)
+```
+
+```{r}
+DimPlot(mm.mog.integ.data, label = T) + ggtitle('CD45+ T cells in Young and Aged mice data integration')
+VlnPlot(mm.mog.integ.data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0)
+DimPlot(mm.mog.integ.data, group.by = 'orig.ident') + ggtitle('CD45+ T cells in Young and Aged mice data integration')
+```
+
+```{r, warning = F, fig.width = 14}
+FeaturePlot(mm.mog.integ.data, c('Ptprc-RA', 'Ptprc-RB', 'Ptprc-RC', 'Ptprc-RO', 'Ptprc'), ncol = 3)
+```
+
+```{r}
+mm.mog.DEA.integrated.filt <- FindAllMarkers(mm.mog.integ.data, assay = 'RNA', logfc.threshold = 1)
+```
+
+```{r}
+print(mm.mog.DEA.integrated.filt %>% dplyr::group_by(cluster) %>% dplyr::filter(row_number() <= 20))
+```
+
+Save updated integrated data set.
+
+```{r}
+saveRDS(mm.mog.integ.data, 'Datasets/GSE155006_integrated_data.rds')
+```
+
+# Annotation
+
+We use SingleR package for annotation.
+
+```{r}
+mm.mog.integ.data.data <- GetAssayData(mm.mog.integ.data, assay = 'RNA', slot = 'data')
+```
+
+```{r}
+ImmGenData <- ImmGenData() 
+```
+
+```{r}
+mm.mog.integ.data.Immgen <- SingleR(mm.mog.integ.data.data, ImmGenData, ImmGenData$label.main, fine.tune = T)
+mm.mog.integ.data$annotation.ImmGen <- mm.mog.integ.data.Immgen$pruned.labels
+
+mm.mog.integ.data.Immgen.fine <- SingleR(mm.mog.integ.data.data, ImmGenData, ImmGenData$label.fine, fine.tune = F)
+mm.mog.integ.data$annotation.ImmGen.fine <- mm.mog.integ.data.Immgen.fine$labels
+```
+
+From the second annotation we remove all cell types where count is lower than 100.
+
+```{r}
+mm.mog.integ.data$annotation.ImmGen.filt <- mm.mog.integ.data$annotation.ImmGen.fine
+mm.mog.integ.data$annotation.ImmGen.filt[mm.mog.integ.data$annotation.ImmGen.filt %in% names(table(mm.mog.integ.data$annotation.ImmGen.filt)[table(mm.mog.integ.data$annotation.ImmGen.filt) < 200])] <- 'Other'
+```
+
+We now show generated annotations on UMAP plot.
+
+```{r, fig.width = 12}
+DimPlot(mm.mog.integ.data, group.by = 'annotation.ImmGen', label = T) + ggtitle('Annotation Immgen')
+DimPlot(mm.mog.integ.data, group.by = 'annotation.ImmGen.filt', label = T) + ggtitle('Annotation Immgen (filt)')
+```
+
+Update data set with annotation.
+
+```{r}
+saveRDS(mm.mog.integ.data, 'Datasets/GSE155006_integrated_data.rds')
+```
+
+# Generating figures
+
+Generate final figures. For each figure we generate Desired final plot and equivalent without text. 
+
+DimPlot:
+
+```{r}
+dim.plot.1 <- DimPlot(mm.mog.integ.data, label = T) + 
+  ggtitle('PBMC (GSE155006) - Clustering') + 
+  scale_x_continuous(breaks=c(-15, 0, 10)) +
+  scale_y_continuous(breaks=c(-15, 0, 5)) +
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=6))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.spacing.x = unit(1, 'cm'),
+        legend.spacing.y = unit(0.3, 'cm'))
+print(dim.plot.1) 
+```
+
+```{r}
+tiff('Figure_5/GSE155006_DimPlot.tiff', width = 8.5, height = 6, units = 'in', res = 200)
+print(dim.plot.1)
+dev.off()
+```
+
+```{r}
+dim.plot.1.blank <- DimPlot(mm.mog.integ.data) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_x_continuous(breaks=c(-15, 0, 10)) +
+  scale_y_continuous(breaks=c(-15, 0, 5)) +
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=6))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank(),
+        legend.spacing.y = unit(0.3, 'cm'),
+        legend.spacing.x = unit(1, 'cm'))
+print(dim.plot.1.blank) 
+```
+
+```{r}
+tiff('Figure_5/GSE155006_DimPlot_blank.tiff', width = 8, height = 6, units = 'in', res = 200)
+print(dim.plot.1.blank)
+dev.off()
+```
+
+Feature plots: PTPRC-RA/RO (Features)
+
+```{r, message= F, warning = F}
+feature.to.list <- c('Ptprc-RA', 'Ptprc-RB', 'Ptprc-RC', 'Ptprc-RO')
+colors <- c(CD45RA.col, CD45RB.col, CD45RC.col, CD45RO.col)
+name.tags <- c('CD45RA', 'CD45RB', 'CD45RC', 'CD45RO')
+lims <- c(1,1,0.5,1)
+
+for(i in 1:length(feature.to.list)){
+  fb.plot <- FeaturePlot(mm.mog.integ.data, feature.to.list[i], min.cutoff = 0) + 
+    ggtitle(paste0('PBMC (GSE155006) - ', name.tags[i], ' -IdAO')) + 
+    scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
+    scale_x_continuous(breaks=c(-15, 0, 10)) +
+    scale_y_continuous(breaks=c(-15, 0, 5)) +
+    theme(plot.title = element_text(hjust = 0.5))
+  print(fb.plot) 
+  
+  tiff(paste0('Figure_5/GSE155006_FeaturePlot_', name.tags[i], '_Software.tiff'), width = 7, height = 6, units = 'in', res = 200)
+  print(fb.plot)
+  dev.off()
+  
+  fb.plot.blank <- FeaturePlot(mm.mog.integ.data, feature.to.list[i], min.cutoff = 0) + 
+    ggtitle('') + xlab('') + ylab('') +
+    scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
+    scale_x_continuous(breaks=c(-15, 0, 10)) +
+    scale_y_continuous(breaks=c(-15, 0, 5)) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          legend.title=element_blank(),
+          legend.text=element_blank())
+  print(fb.plot.blank) 
+  
+  tiff(paste0('Figure_5/GSE155006_FeaturePlot_', name.tags[i], '_Software_blank.tiff'), width = 6.5, height = 6, units = 'in', res = 200)
+  print(fb.plot.blank)
+  dev.off()
+}
+```
+
+Plot desired features.
+
+```{r, message=F, warning=F}
+features.to.plot = c('Cd28', 'Cd79a', 'Cd3d', 'Cd4', 'Cd8a', 'Cd14', 'Klrk1', 'Sell', 'Ccr7', 'Ccl5', 'Cd44', 'Tcrg-C1', 'Trgv2', 'H2-Ab1')
+breaks <- c(4,5,4,3,4,2,4,4,4,7,4,4,4,5)
+i <- 0
+for(feature in features.to.plot){
+  i <- i + 1
+  fb.plot <- FeaturePlot(mm.mog.integ.data, feature , min.cutoff = 0) + 
+    ggtitle(paste0('PBMC (GSE155006) - ', feature)) + 
+    scale_colour_gradient(breaks = c(0,breaks[i]), low = 'grey85', high = 'blue') + 
+    scale_x_continuous(breaks=c(-15, 0, 10)) +
+    scale_y_continuous(breaks=c(-15, 0, 5)) +
+    theme(plot.title = element_text(hjust = 0.5))
+  print(fb.plot) 
+  
+  tiff(paste0('Figure_5/GSE155006_FeaturePlot_', feature, '.tiff'), width = 7, height = 6, units = 'in', res = 200)
+  print(fb.plot)
+  dev.off()
+  
+  fb.plot.blank <- FeaturePlot(mm.mog.integ.data, feature, min.cutoff = 0) + 
+    ggtitle('') + xlab('') + ylab('') +
+    scale_colour_gradient(breaks = c(0,breaks[i]), low = 'grey85', high = 'blue') +
+    scale_x_continuous(breaks=c(-15, 0, 10)) +
+    scale_y_continuous(breaks=c(-15, 0, 5)) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          legend.title=element_blank(),
+          legend.text=element_blank())
+  print(fb.plot.blank) 
+  
+  tiff(paste0('Figure_5/GSE155006_FeaturePlot_', feature, '_blank.tiff'), width = 6.5, height = 6, units = 'in', res = 200)
+  print(fb.plot.blank)
+  dev.off()
+}
+```
+

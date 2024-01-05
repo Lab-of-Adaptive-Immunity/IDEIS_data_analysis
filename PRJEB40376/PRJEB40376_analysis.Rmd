@@ -1,0 +1,494 @@
+---
+title: "PRJEB40376 Analysis"
+author: "Juraj Michalik"
+date: "2023-08-14"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+Analysis of CD45/PTPRC isoforms from human PBMCs. These data lack FB so we need to use standard markers to identify cell types and see the match with Cd45 isoform expression.
+Paper: https://www.sciencedirect.com/science/article/pii/S1074761320304921?via%3Dihub
+
+Run this script once PRJEB10376_preparation.Rmd and IDEIS were run.
+
+# Initialization
+
+## Creating objects
+
+Load libraries.
+
+```{r}
+library(Seurat)
+library(future)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(dbscan)
+library(scatterpie)
+library(reshape2)
+library(ggrepel)
+library(scds)
+library(SingleCellExperiment)
+library(STACAS)
+```
+
+Create required directories.
+
+```{r}
+dir.create('Figure_7', showWarnings = FALSE)
+```
+
+Memorize all needed colors.
+
+```{r}
+CD45RA.IDAO.col <- 'firebrick3'
+CD45RO.IDAO.col <- 'darkorchid2'
+CD45RA.FB.col <- 'red'
+CD45RO.FB.col <- 'dodgerblue2'
+```
+
+Load data initialized beforehand (10 samples).
+
+```{r}
+seu.pool.list <- list()
+names.files <- paste('Pool', seq(1,10,1), sep = '_')
+
+for(i in 1:length(names.files)){
+  seu.pool.list[[i]] <- readRDS(paste0('Datasets/', names.files[i], '_initial_data.rds'))
+}
+names(seu.pool.list) <- names.files
+```
+
+Import Ptprc data.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  ptprc.pool.minus <- readRDS(paste0('Ptprc_split/Ptprc_', pool.names[i], '_100minus_raw_matrix.rds'))
+  ptprc.pool.plus <- readRDS(paste0('Ptprc_split/Ptprc_', pool.names[i], '_100plus_raw_matrix.rds'))
+  ptprc.pool <- ptprc.pool.minus + ptprc.pool.plus 
+  seu.pool.list[[i]][['Ptprc']] <- CreateAssayObject(ptprc.pool)
+}
+```
+
+Look at quality of each data subset.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  print(VlnPlot(seu.pool.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0))
+}
+```
+
+Analyze each data set. First we remove few cells with 10+ mt. genes.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  seu.pool.list[[i]] <- subset(seu.pool.list[[i]], percent.mt <= 10)
+}
+```
+
+Proceed with analysis itself.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  seu.pool.list[[i]] <- NormalizeData(object = seu.pool.list[[i]])
+  seu.pool.list[[i]] <- FindVariableFeatures(seu.pool.list[[i]], selection.method = "vst",
+                                             nfeatures = 1000, verbose = FALSE)
+    
+  seu.pool.list[[i]] <- ScaleData(seu.pool.list[[i]], verbose = FALSE)
+  seu.pool.list[[i]] <- RunPCA(seu.pool.list[[i]], npcs = 20, verbose = FALSE)
+  seu.pool.list[[i]] <- RunUMAP(seu.pool.list[[i]], reduction = "pca", dims = 1:20)
+    
+  seu.pool.list[[i]] <- FindNeighbors(seu.pool.list[[i]], dims = 1:20)
+  seu.pool.list[[i]] <- FindClusters(seu.pool.list[[i]], resolution = 0.5) 
+}
+```
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  print(DimPlot(seu.pool.list[[i]], label = T) + ggtitle(pool.names[i]))
+  print(VlnPlot(seu.pool.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0))
+}
+```
+
+Normalize Features.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  seu.pool.list[[i]] <- NormalizeData(seu.pool.list[[i]], normalization.method = "CLR", margin = 2, assay = "Ptprc")
+  seu.pool.list[[i]] <- NormalizeData(seu.pool.list[[i]], normalization.method = "CLR", margin = 2, assay = "Antibodies")
+}
+```
+
+Plot some Features.
+
+```{r, message=F, warning=F, fig.width=10}
+for(i in 1:length(seu.pool.list)){
+  print(FeaturePlot(seu.pool.list[[i]], c('PTPRC-RA', 'PTPRC-RO', 'CD45RA', 'CD45RO', 'CD4.1', 'CD8.1', 'CD79B.1'), ncol=3))
+}
+```
+
+Save.
+
+```{r}
+for(i in 1:length(seu.pool.list)){
+  saveRDS(seu.pool.list[[i]], paste0('Datasets/', names(seu.pool.list)[i], '_finalized_data.rds'))
+}
+```
+
+We integrate all data sets:
+
+# Integration
+
+We now integrate the data and then remove bad clusters to have simpler filtration of data.
+
+```{r}
+pool.integrated <- Run.STACAS(seu.pool.list, anchor.features = 1000)
+```
+
+```{r}
+pool.integrated <- ScaleData(pool.integrated, verbose = FALSE)
+pool.integrated <- RunPCA(pool.integrated, npcs = 20, verbose = FALSE)
+pool.integrated <- RunUMAP(pool.integrated, reduction = "pca", dims = 1:20)
+  
+pool.integrated <- FindNeighbors(pool.integrated, dims = 1:20)
+pool.integrated <- FindClusters(pool.integrated, resolution = 0.3)
+```
+
+```{r, warning=F, message=F}
+DimPlot(pool.integrated, label = T) + ggtitle('PBMC - PRJEB40376 - integ.')
+VlnPlot(pool.integrated, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 2, pt.size = 0)
+DimPlot(pool.integrated, group.by = 'orig.ident') + ggtitle('PBMC - PRJEB40376 - integ.')
+```
+
+Have a look at differential expression of data to see what clusters contain what.
+
+```{r}
+DEA.PBMC <- FindAllMarkers(pool.integrated, assay = 'RNA', logfc.threshold = 1)
+```
+
+```{r}
+print(DEA.PBMC %>% dplyr::group_by(cluster) %>% dplyr::filter(row_number() <= 20))
+```
+
+Print some of features.
+
+```{r, message=F, warning=F, fig.width=14}
+FeaturePlot(pool.integrated, c('GZMA', 'CD3', 'PTPRC', 'CD4', 'CD8A', 'MS4A1', 'SELL', 'CCR7', 'MKI67'), min.cutoff = 0, ncol = 3)
+FeaturePlot(pool.integrated, c('nFeature_RNA'), min.cutoff = 0, ncol = 1)
+FeaturePlot(pool.integrated, c('antibodies_CD3', 'CD45RA', 'CD45RO', 'CD4.1', 'CD8A.1', 'CD79B.1'), min.cutoff = 0, ncol = 3)
+FeaturePlot(pool.integrated, c('Baseline', 'Anti-CD3-CD28', 'LPS'), min.cutoff = 0, ncol = 3)
+FeaturePlot(pool.integrated, c('PTPRC-RA', 'PTPRC-RB', 'PTPRC-RC', 'PTPRC-RO'), min.cutoff = 0, ncol = 3)
+```
+
+Save integrated data.
+
+```{r}
+saveRDS(pool.integrated, 'Datasets/PRJEB40376_integrated_data.rds')
+```
+
+# Getting relations between antibody and inferred CD45 isoforms
+
+```{r}
+assay.counts.Atb <- pool.integrated[['Antibodies']] %>% .[c('CD45RA', 'CD45RO'),]
+assay.counts.Ptprc <- pool.integrated[['Ptprc']] %>% .[c('PTPRC-RA', 'PTPRC-RO'),]
+
+clusters <- pool.integrated$seurat_clusters %>% as.character %>% as.numeric
+Ptprc.assay.counts <- cbind(t(assay.counts.Atb), t(assay.counts.Ptprc), clusters) %>%
+  as.data.frame %>% dplyr::group_by(clusters) %>% 
+  dplyr::summarise(average.CD45RA.FB = mean(CD45RA),
+                   average.CD45RO.FB = mean(CD45RO),
+                   average.CD45RA.PTPRC = mean(`PTPRC-RA`),
+                   average.CD45RO.PTPRC = mean(`PTPRC-RO`))
+```
+
+We also perform linear fit (our software vs. antibodies).
+
+```{r}
+lm1.CD45RA <- lm(formula = average.CD45RA.PTPRC ~ average.CD45RA.FB, data = Ptprc.assay.counts)
+lm1.CD45RO <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RO.FB, data = Ptprc.assay.counts)
+
+```
+
+Get Pearson's correlation coefficients.
+
+```{r}
+r.CD45RA <- cor(Ptprc.assay.counts$average.CD45RA.FB, Ptprc.assay.counts$average.CD45RA.PTPRC, method = 'pearson')
+r.CD45RO <- cor(Ptprc.assay.counts$average.CD45RO.FB, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
+```
+
+Now plot IdAO ~ FB relation.
+
+```{r}
+scatterplot.lin.RA <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.FB, y = average.CD45RA.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.IDAO.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RA - average of log2-normalized expression for FB') + ylab('CD45RA - average of log2-normalized expression\n for software - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 2)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.05)) +
+  annotate('text',  
+           col = CD45RA.IDAO.col, x = 1, y = 0.05, 
+           label = paste0('y = ', round(lm1.CD45RA$coefficients[2], 2), ' + ',  round(lm1.CD45RA$coefficients[1], 2), '\nr=', round(r.CD45RA,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RA$coefficients[2], intercept = lm1.CD45RA$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('Relation between average of log2-normalized counts for antibody reads
+           and sofware-computed reads per cluster for CD45RO isoform') +
+  theme_classic()
+
+print(scatterplot.lin.RA)
+
+
+scatterplot.lin.RO <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.FB, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RO.IDAO.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RO - average of log2-normalized expression for FB') + ylab('CD45RO - average of log2-normalized expression\n for software - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.3)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.1)) +
+  annotate('text',  
+           col = CD45RO.IDAO.col, x = 0.3, y = 0.1, 
+           label = paste0('y = ', round(lm1.CD45RO$coefficients[2], 2), ' + ',  round(lm1.CD45RO$coefficients[1], 2), '\nr=', round(r.CD45RO,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RO$coefficients[2], intercept = lm1.CD45RO$coefficients[1], col = CD45RO.IDAO.col) +
+  ggtitle('Relation between average of log2-normalized counts for antibody reads
+           and sofware-computed reads per cluster for CD45RO isoform') +
+  theme_classic()
+
+print(scatterplot.lin.RO)
+```
+
+# Annotation
+
+```{r}
+pool.integrated.counts <- GetAssayData(pool.integrated, assay = 'RNA', slot = 'data')
+```
+
+```{r}
+MonacoData <- MonacoImmuneData() 
+```
+
+```{r}
+pool.integrated.Monaco <- SingleR(pool.integrated.counts, MonacoData, MonacoData$label.main, fine.tune = T)
+pool.integrated$annotation.Monaco <- pool.integrated.Monaco$pruned.labels
+
+pool.integrated.Monaco.fine <- SingleR(pool.integrated.counts, MonacoData, MonacoData$label.fine, fine.tune = T)
+pool.integrated$annotation.Monaco.fine <- pool.integrated.Monaco.fine$pruned.labels
+```
+
+We now show generated annotations on UMAP plot.
+
+```{r, fig.width = 10}
+DimPlot(pool.integrated, group.by = 'annotation.Monaco') + ggtitle('Annotation Monaco')
+DimPlot(pool.integrated, group.by = 'annotation.Monaco.fine') + ggtitle('Annotation Monaco (fine)')
+```
+
+Save (update) integrated data with annotation.
+
+```{r}
+saveRDS(pool.integrated, 'Datasets/PRJEB40376_integrated_data.rds')
+```
+
+# Generating figures
+
+Generate final figures. For each figure we generate Desired final plot and equivalent without text. 
+
+DimPlot:
+
+```{r}
+dim.plot.1 <- DimPlot(pool.integrated, label = T) + 
+  ggtitle('PBMC (PRJEB40376) - Clustering') + 
+  scale_x_continuous(breaks=c(-10, 0, 5)) +
+  scale_y_continuous(breaks=c(-10, 0, 10)) +
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=6))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.spacing.x = unit(1, 'cm'),
+        legend.spacing.y = unit(0.3, 'cm'))
+#print(dim.plot.1) 
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_DimPlot.tiff', width = 8.5, height = 6, units = 'in', res = 200)
+print(dim.plot.1)
+dev.off()
+```
+
+```{r}
+dim.plot.1.blank <- DimPlot(pool.integrated) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_x_continuous(breaks=c(-10, 0, 10)) +
+  scale_y_continuous(breaks=c(-10, 0, 10)) +
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=6))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank(),
+        legend.spacing.y = unit(0.3, 'cm'),
+        legend.spacing.x = unit(1, 'cm'))
+#print(dim.plot.1.blank) 
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_DimPlot_blank.tiff', width = 8, height = 6, units = 'in', res = 200)
+print(dim.plot.1.blank)
+dev.off()
+```
+
+Plot features.
+
+```{r}
+feature.to.list <- c('PTPRC-RA', 'PTPRC-RO', 'CD45RA', 'CD45RO')
+colors <- c(CD45RA.IDAO.col, CD45RO.IDAO.col, CD45RA.FB.col, CD45RO.FB.col)
+name.tags <- c('CD45RA_Software', 'CD45RO_Software', 'CD45RA_Antibodies', 'CD45RO_Antibodies')
+lims <- c(2,2,2,2)
+max.cut <- c(2,2,2,2)
+
+for(i in 1:length(feature.to.list)){
+  fb.plot <- FeaturePlot(pool.integrated, feature.to.list[i], min.cutoff = 0, max.cutoff = max.cut[i]) + 
+    ggtitle(paste0('PBMC (PRJEB40376) - ', name.tags[i])) + 
+    scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
+    scale_x_continuous(breaks=c(-10, 0, 10)) +
+    scale_y_continuous(breaks=c(-10, 0, 10)) +
+    theme(plot.title = element_text(hjust = 0.5))
+  print(fb.plot) 
+  
+  tiff(paste0('Figure_7/PRJEB40376_FeaturePlot_', name.tags[i], '.tiff'), width = 7, height = 6, units = 'in', res = 200)
+  print(fb.plot)
+  dev.off()
+  
+  fb.plot.blank <- FeaturePlot(pool.integrated, feature.to.list[i], min.cutoff = 0, max.cutoff = max.cut[i]) + 
+    ggtitle('') + xlab('') + ylab('') +
+    scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
+    scale_x_continuous(breaks=c(-10, 0, 10)) +
+    scale_y_continuous(breaks=c(-10, 0, 10)) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          legend.title=element_blank(),
+          legend.text=element_blank())
+  print(fb.plot.blank) 
+  
+  tiff(paste0('Figure_7/PRJEB40376_FeaturePlot_', name.tags[i], '_blank.tiff'), width = 6.5, height = 6, units = 'in', res = 200)
+  print(fb.plot.blank)
+  dev.off()
+}
+```
+
+Plot desired features.
+
+```{r, message=F, warning=F}
+features.to.plot = c('CD28', 'CD79A', 'CD3D', 'CD4', 'CD8A', 'CD14', 'KLRK1', 'SELL', 'CCR7', 'CCL5')
+breaks <- c(3,4,4,3,3,4,2,3,4,5)
+
+i <- 0
+for(feature in features.to.plot){
+  i <- i + 1
+  fb.plot <- FeaturePlot(pool.integrated, feature , min.cutoff = 0) + 
+    ggtitle(paste0('PBMC (PRJEB40376) - ', feature)) + 
+    scale_colour_gradient(breaks = c(0,breaks[i]), low = 'grey85', high = 'blue') + 
+    scale_x_continuous(breaks=c(-10, 0, 10)) +
+    scale_y_continuous(breaks=c(-10, 0, 10)) +
+    theme(plot.title = element_text(hjust = 0.5))
+  #print(fb.plot) 
+  
+  tiff(paste0('Figure_7/PRJEB40376_FeaturePlot_', feature, '.tiff'), width = 7, height = 6, units = 'in', res = 200)
+  print(fb.plot)
+  dev.off()
+  
+  fb.plot.blank <- FeaturePlot(pool.integrated, feature, min.cutoff = 0) + 
+    ggtitle('') + xlab('') + ylab('') +
+    scale_colour_gradient(breaks = c(0,breaks[i]), low = 'grey85', high = 'blue') +
+    scale_x_continuous(breaks=c(-10, 0, 10)) +
+    scale_y_continuous(breaks=c(-10, 0, 10)) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          legend.title=element_blank(),
+          legend.text=element_blank())
+  #print(fb.plot.blank) 
+  
+  tiff(paste0('Figure_7/PRJEB40376_FeaturePlot_', feature, '_blank.tiff'), width = 6.5, height = 6, units = 'in', res = 200)
+  print(fb.plot.blank)
+  dev.off()
+}
+```
+
+Plotting regression figures.
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RA.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RO.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RO)
+dev.off()
+```
+
+As before, we make textless version.
+
+```{r}
+scatterplot.lin.RA.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.FB, y = average.CD45RA.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.IDAO.col, size = 4) +
+  xlab('') + ylab('\n') +
+  geom_abline(slope = lm1.CD45RA$coefficients[2], intercept = lm1.CD45RA$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 2)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.03)) +
+  theme_classic() + 
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+print(scatterplot.lin.RA.blank)
+
+
+scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.FB, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RO.IDAO.col, size = 4) +
+  xlab('') + ylab('\n') + 
+  geom_abline(slope = lm1.CD45RO$coefficients[2], intercept = lm1.CD45RO$coefficients[1], col = CD45RO.IDAO.col) +
+  ggtitle('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.3)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.05)) +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+print(scatterplot.lin.RO.blank)
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RA_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RA.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RO_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RO.blank)
+dev.off()
+```

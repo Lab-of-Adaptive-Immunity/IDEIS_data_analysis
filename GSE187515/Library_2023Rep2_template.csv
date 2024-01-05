@@ -1,0 +1,4 @@
+fastqs,sample,library_type
+/path/to/IDEIS_data_analysis/GSE187515/Fastqs,2023Rep2GEX,Gene Expression
+/path/to/IDEIS_data_analysis/GSE187515/Fastqs,2023Rep2FB,Antibody Capture
+

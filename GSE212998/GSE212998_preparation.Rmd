@@ -156,7 +156,8 @@ write.table(gsub('-1', '', colnames(GFP_neg_inf)), 'Whitelists/Whitelist_GFP_neg
 
 ```{r}
 enter.data.list <- list(GFP_pos_w1_pre_inf, GFP_pos_w2_pre_inf, GFP_pos_w1_inf, GFP_pos_w2_inf, GFP_neg_inf)
-names.files <- c('GFP-pos-W1', 'GFP-pos-W2', 'GFP-pos-W1-expand', 'GFP-pos-W2-expand', 'GFP-neg-expand')
+names.files <- c('GFP-pos-w1', 'GFP-pos-w2', 'GFP-pos-w1-expand', 'GFP-pos-w2-expand', 'GFP-neg-expand')
+names(enter.data.list) <- names.files 
 ```
 
 Save all in data sets.

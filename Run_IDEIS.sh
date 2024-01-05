@@ -9,7 +9,7 @@ python GSE187515_subset.py
 python IDEIS/IDEIS_main.py Homo_Sapiens GSE212998/GFP-pos-w1/outs/possorted_genome_bam.bam GSE212998/IDEIS/GFP-pos-w1 -g Homo-Sapiens --whitelist GSE212998/Whitelists/Whitelist_GFP-pos-w1.csv
 python IDEIS/IDEIS_main.py Homo_Sapiens GSE212998/GFP-pos-w2/outs/possorted_genome_bam.bam GSE212998/IDEIS/GFP-pos-w2 -g Homo-Sapiens --whitelist GSE212998/Whitelists/Whitelist_GFP-pos-w2.csv
 python IDEIS/IDEIS_main.py Homo_Sapiens GSE212998/GFP-pos-w1-expand/outs/possorted_genome_bam.bam GSE212998/IDEIS/GFP-pos-w1-expand -g Homo-Sapiens --whitelist GSE212998/Whitelists/Whitelist_GFP_pos-w1-expand.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens GSE212998/GFP-pos-w2-expand/outs/possorted_genome_bam.bam GSE212998/IDEIS/GFP-pos-w2-expand -g Homo-Sapiens --whitelist GSE212998/Whitelists/Whitelist_GFP_pos-inf-w2-expand.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens GSE212998/GFP-pos-w2-expand/outs/possorted_genome_bam.bam GSE212998/IDEIS/GFP-pos-w2-expand -g Homo-Sapiens --whitelist GSE212998/Whitelists/Whitelist_GFP_pos-w2-expand.csv
 python IDEIS/IDEIS_main.py Homo_Sapiens GSE212998/GFP-neg-expand/outs/possorted_genome_bam.bam GSE212998/IDEIS/GFP-neg-expand -g Homo-Sapiens --whitelist GSE212998/Whitelists/Whitelist_GFP_neg_inf.csv
 
 mkdir GSE212998/Ptprc

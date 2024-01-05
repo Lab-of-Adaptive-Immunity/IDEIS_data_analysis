@@ -81,7 +81,7 @@ Load data initialized beforehand (3 samples).
 
 ```{r}
 enter.data.list <- list()
-names.files <- c('GFP-pos-W1', 'GFP-pos-W2', 'GFP-pos-W1-expand', 'GFP-pos-W2-expand', 'GFP-neg-expand')
+names.files <- c('GFP-pos-w1', 'GFP-pos-w2', 'GFP-pos-w1-expand', 'GFP-pos-w2-expand', 'GFP-neg-expand')
 
 for(i in 1:length(names.files)){
   enter.data.list[[i]] <- readRDS(paste0('Datasets/', names.files[i], '_initial_data.rds'))
@@ -90,20 +90,20 @@ names(enter.data.list) <- names.files
 ```
 
 ```{r}
-ptprc_w1_pre_inf <- readRDS('../Data_sets/Human5/GSE212998/Ptprc_GFP-pos-w1.rds')
-GFP_pos_w1_pre_inf[['Ptprc']] <- CreateAssayObject(ptprc_w1_pre_inf)
+ptprc_w1_pre_inf <- readRDS('Ptprc/Ptprc_GFP-pos-w1.rds')
+enter.data.list[[1]][['Ptprc']] <- CreateAssayObject(ptprc_w1_pre_inf)
 
-ptprc_w2_pre_inf <- readRDS('../Data_sets/Human5/GSE212998/Ptprc_GFP-pos-w2.rds')
-GFP_pos_w2_pre_inf[['Ptprc']] <- CreateAssayObject(ptprc_w2_pre_inf)
+ptprc_w2_pre_inf <- readRDS('Ptprc/Ptprc_GFP-pos-w2.rds')
+enter.data.list[[2]][['Ptprc']] <- CreateAssayObject(ptprc_w2_pre_inf)
 
-ptprc_w1_inf <- readRDS('../Data_sets/Human5/GSE212998/Ptprc_GFP-pos-w1-expand.rds')
-GFP_pos_w1_inf[['Ptprc']] <- CreateAssayObject(ptprc_w1_inf)
+ptprc_w1_inf <- readRDS('Ptprc/Ptprc_GFP-pos-w1-expand.rds')
+enter.data.list[[3]][['Ptprc']] <- CreateAssayObject(ptprc_w1_inf)
 
-ptprc_w2_inf <- readRDS('../Data_sets/Human5/GSE212998/Ptprc_GFP-pos-w2-expand.rds')
-GFP_pos_w2_inf[['Ptprc']] <- CreateAssayObject(ptprc_w2_inf)
+ptprc_w2_inf <- readRDS('Ptprc/Ptprc_GFP-pos-w2-expand.rds')
+enter.data.list[[4]][['Ptprc']] <- CreateAssayObject(ptprc_w2_inf)
 
-ptprc_inf_neg <- readRDS('../Data_sets/Human5/GSE212998/Ptprc_GFP-neg-expand.rds')
-GFP_neg_inf[['Ptprc']] <- CreateAssayObject(ptprc_inf_neg)
+ptprc_inf_neg <- readRDS('Ptprc/Ptprc_GFP-neg-expand.rds')
+enter.data.list[[5]][['Ptprc']] <- CreateAssayObject(ptprc_inf_neg)
 ```
 
 ```{r}
@@ -116,7 +116,7 @@ Load and store CD45er data.
 
 ```{r}
 for(i in 1:length(enter.data.list)){
-  CD45er.probs <- read.csv(paste0('Ptprc_CD45er/', names(enter.data.list)[i] , '_iso_probs.csv'))
+  CD45er.probs <- read.csv(paste0('../Benchmarks/GSE212998/', names(enter.data.list)[i] , '/CD45er_Benchmark_0/isoform_probabilities.csv'))
   CD45er.mat <- cbind(CD45er.probs[,4] + CD45er.probs[,6] + CD45er.probs[,8], CD45er.probs[,3]) %>% as.matrix %>% Matrix(.,sparse = T)
   CD45er.mat <- aggregate.Matrix(CD45er.mat, CD45er.probs$CB) %>% t(.)
   rownames(CD45er.mat) <- c('erCD45RA', 'erCD45RO')
@@ -265,7 +265,7 @@ for(i in 1:length(enter.data.list)){
 Save all required data sets.
 
 ```{r}
-for(i in 1:length(HIV_list)){
+for(i in 1:length(enter.data.list)){
   saveRDS(enter.data.list[[i]], paste0('Datasets/dataset_', names(enter.data.list)[i], '_finalized_data.rds'))
 }
 ```
@@ -302,7 +302,7 @@ FeaturePlot(enter.integ.data, c('CD45RA', 'CD45RO', 'PTPRC-RA', 'PTPRC-RO', 'erC
 Save integrated data set.
 
 ```{r}
-saveRDS(enter.integ.data, 'Data_sets/GSE212998_integrated_data.rds')
+saveRDS(enter.integ.data, 'Datasets/GSE212998_integrated_data.rds')
 ```
 
 # DEA
@@ -481,7 +481,7 @@ DimPlot(enter.integ.data, group.by = 'annotation.manual')
 Save (update) integrated data set with annotation.
 
 ```{r}
-saveRDS(enter.integ.data, 'Data_sets/GSE212998_integrated_data.rds')
+saveRDS(enter.integ.data, 'Datasets/GSE212998_integrated_data.rds')
 ```
 
 # Generating Figures

@@ -84,7 +84,7 @@ names(mm.mog.list) <- names.files
 
 ```{r}
 for(i in 1:length(mm.mog.list)){
-  mm.mog.ptprc <- readRDS(paste0('Ptprc/Ptprc_', mog.names[i], '.rds'))
+  mm.mog.ptprc <- readRDS(paste0('Ptprc/Ptprc_', names(mm.mog.list)[i], '.rds'))
   mm.mog.list[[i]][['Ptprc']] <- CreateAssayObject(mm.mog.ptprc)
 }
 ```

@@ -40,25 +40,72 @@ cp GSE155006/IDEIS/Spleen_Aged/Results/Iso_Counts/raw_matrix.rds GSE155006/Ptprc
 cp GSE155006/IDEIS/Spleen_Young/Results/Iso_Counts/raw_matrix.rds GSE155006/Ptprc/Ptprc_Spleen_Young.rds
 
 # PRJEB40376
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_1/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_1 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_1.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_2/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_2 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_2.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_3/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_3 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_3.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_4/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_4 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_4.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_5/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_5 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_5.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_6/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_6 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_6.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_7/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_7 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_7.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_8/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_8 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_8.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_9/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_9 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_9.csv
-python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Pool_10/outs/possorted_genome_bam.bam PRJEB40376/IDEIS/Pool_10 -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_10.csv
+# here we need to divide BAM by length (under and over 100 bp for R2) because of division
+
+mkdir PRJEB40376/Bams_split
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_1/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_1/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_2/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_2_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_2/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_2_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_3/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_3_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_3/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_3_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_4/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_4_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_4/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_4_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_5/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_5_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_5/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_5_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_6/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_6_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_6/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_6_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_7/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_7_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_7/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_7_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_8/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_8_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_8/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_8_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_9/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_9_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_9/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_9_possorted_genome_bam_100plus.bam
+samtools view -bS -e 'length(seq)<=100' -@ 32 PRJEB40376/Pool_10/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_10_possorted_genome_bam_100minus.bam
+samtools view -bS -e 'length(seq)>100' -@ 32 PRJEB40376/Pool_10/outs/possorted_genome_bam.bam > PRJEB40376/Bams_split/Pool_10_possorted_genome_bam_100plus.bam
+
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_1_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_1.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_2_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_2.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_3_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_3.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_4_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_4.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_5_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_5.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_6_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_6.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_7_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_7.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_8_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_8.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_9_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_9.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100minus.bam PRJEB40376/IDEIS/Pool_10_minus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_10.csv
+
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_1_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_1.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_2_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_2.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_3_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_3.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_4_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_4.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plusbam PRJEB40376/IDEIS/Pool_5_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_5.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_6_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_6.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_7_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_7.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_8_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_8.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_9_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_9.csv
+python IDEIS/IDEIS_main.py Homo_Sapiens PRJEB40376/Bams_split/Pool_1_possorted_genome_bam_100plus.bam PRJEB40376/IDEIS/Pool_10_plus -g Homo-Sapiens --whitelist PRJEB40376/Whitelists/Whitelist_Pool_10.csv
 
 mkdir PRJEB40376/Ptprc
-cp PRJEB40376/IDEIS/Pool_1/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_1.rds
-cp PRJEB40376/IDEIS/Pool_2/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_2.rds
-cp PRJEB40376/IDEIS/Pool_3/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_3.rds
-cp PRJEB40376/IDEIS/Pool_4/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_4.rds
-cp PRJEB40376/IDEIS/Pool_5/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_5.rds
-cp PRJEB40376/IDEIS/Pool_6/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_6.rds
-cp PRJEB40376/IDEIS/Pool_7/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_7.rds
-cp PRJEB40376/IDEIS/Pool_8/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_8.rds
-cp PRJEB40376/IDEIS/Pool_9/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_9.rds
-cp PRJEB40376/IDEIS/Pool_10/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_10.rds
+cp PRJEB40376/IDEIS/Pool_1_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_1_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_2_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_2_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_3_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_3_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_4_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_4_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_5_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_5_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_6_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_6_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_7_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_7_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_8_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_8_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_9_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_9_100minus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_10_minus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_10_100minus_raw_matrix.rds
+
+cp PRJEB40376/IDEIS/Pool_1_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_1_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_2_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_2_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_3_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_3_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_4_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_4_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_5_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_5_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_6_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_6_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_7_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_7_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_8_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_8_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_9_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_9_100plus_raw_matrix.rds
+cp PRJEB40376/IDEIS/Pool_10_plus/Results/Iso_Counts/raw_matrix.rds PRJEB40376/Ptprc/Ptprc_Pool_10_100plus_raw_matrix.rds
+

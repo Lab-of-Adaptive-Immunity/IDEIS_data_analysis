@@ -61,16 +61,16 @@ dir.create('Whitelists', showWarnings = FALSE)
 Load all required samples (10 samples).
 
 ```{r}
-pool1 <- Read10X('PRJEB40376/Pool_1/raw_feature_bc_matrix/')
-pool2 <- Read10X('PRJEB40376/Pool_2/raw_feature_bc_matrix/')
-pool3 <- Read10X('PRJEB40376/Pool_3/raw_feature_bc_matrix/')
-pool4 <- Read10X('PRJEB40376/Pool_4/raw_feature_bc_matrix/')
-pool5 <- Read10X('PRJEB40376/Pool_5/raw_feature_bc_matrix/')
-pool6 <- Read10X('PRJEB40376/Pool_6/raw_feature_bc_matrix/')
-pool7 <- Read10X('PRJEB40376/Pool_7/raw_feature_bc_matrix/')
-pool8 <- Read10X('PRJEB40376/Pool_8/raw_feature_bc_matrix/')
-pool9 <- Read10X('PRJEB40376/Pool_9/raw_feature_bc_matrix/')
-pool10 <- Read10X('PRJEB40376/Pool_10/raw_feature_bc_matrix/')
+pool1 <- Read10X('Pool_1/outs/raw_feature_bc_matrix/')
+pool2 <- Read10X('Pool_2/outs/raw_feature_bc_matrix/')
+pool3 <- Read10X('Pool_3/outs/raw_feature_bc_matrix/')
+pool4 <- Read10X('Pool_4/outs/raw_feature_bc_matrix/')
+pool5 <- Read10X('Pool_5/outs/raw_feature_bc_matrix/')
+pool6 <- Read10X('Pool_6/outs/raw_feature_bc_matrix/')
+pool7 <- Read10X('Pool_7/outs/raw_feature_bc_matrix/')
+pool8 <- Read10X('Pool_8/outs/raw_feature_bc_matrix/')
+pool9 <- Read10X('Pool_9/outs/raw_feature_bc_matrix/')
+pool10 <- Read10X('Pool_10/outs/raw_feature_bc_matrix/')
 
 pool.count.matrices <- list(pool1, pool2, pool3, pool4, pool5, pool6, pool7, pool8, pool9, pool10)
 ```

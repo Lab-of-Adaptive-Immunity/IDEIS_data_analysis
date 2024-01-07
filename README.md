@@ -58,9 +58,9 @@ python Path_injector.py
 python Run_Cellranger.py
 ```
 
-8.) Perform preparations of data with GSE187515_preparation.Rmd, GSE212998_preparation.Rmd, GSE155006_preparation.Rmd and PRJEB10376_preparation.Rmd. This is optimally done in RStudio, using 'Run All' option from 'Run' menu of RStudio. 
+8.) Perform preparations of data with GSE187515_preparation.Rmd, GSE212998_preparation.Rmd, GSE155006_preparation.Rmd and PRJEB40376_preparation.Rmd. This is optimally done in RStudio, using 'Run All' option from 'Run' menu of RStudio. 
 
-9.) Run IDEIS using Run_IDEIS.sh.
+9.) Run IDEIS using Run_IDEIS.sh. Warning: In case of PRJEB40376 the BAM files are split by length beforehand, which takes a long time.
 
 ```
 bash Run_IDEIS.sh
@@ -83,6 +83,6 @@ python GSE187515_subset.py
 python count_mapped_reads.py
 ```
 
-12.) Perform analyses of data with GSE187515_analysis.Rmd, GSE212998_analysis.Rmd, GSE155006_analysis.Rmd and PRJEB10376_analysis.Rmd. The best way is to run these files in RStudio with 'Run All' option.
+12.) Perform analyses of data with GSE187515_analysis.Rmd, GSE212998_analysis.Rmd, GSE155006_analysis.Rmd and PRJEB40376_analysis.Rmd. The best way is to run these files in RStudio with 'Run All' option.
 
 13.) Run Benchmarks.Rmd. Again, the best way is to use RStudio and 'Run All' option.

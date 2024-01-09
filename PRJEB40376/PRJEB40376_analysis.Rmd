@@ -82,8 +82,8 @@ Import Ptprc data.
 
 ```{r}
 for(i in 1:length(seu.pool.list)){
-  ptprc.pool.minus <- readRDS(paste0('Ptprc_split/Ptprc_', pool.names[i], '_100minus_raw_matrix.rds'))
-  ptprc.pool.plus <- readRDS(paste0('Ptprc_split/Ptprc_', pool.names[i], '_100plus_raw_matrix.rds'))
+  ptprc.pool.minus <- readRDS(paste0('Ptprc/Ptprc_', pool.names[i], '_100minus_raw_matrix.rds'))
+  ptprc.pool.plus <- readRDS(paste0('Ptprc/Ptprc_', pool.names[i], '_100plus_raw_matrix.rds'))
   ptprc.pool <- ptprc.pool.minus + ptprc.pool.plus 
   seu.pool.list[[i]][['Ptprc']] <- CreateAssayObject(ptprc.pool)
 }

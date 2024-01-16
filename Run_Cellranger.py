@@ -9,11 +9,17 @@ if __name__ == '__main__':
   # Fill in configuration parameters
   
   ncores = 32
-  path_to_cellranger_3 = 'cellranger-3.0.2/cellranger-cs/3.0.2/bin/cellranger' # location of cellranger3.0.2
-  path_to_cellranger_5 = 'cellranger5.0.1/cellranger-5.0.1/cellranger' # location of cellranger5.0.1
+  path_to_cellranger_3 = '/mnt/scratch/beluga/michalik/cellranger3.0.2/cellranger-3.0.2/cellranger-cs/3.0.2/bin/cellranger' # location of cellranger3.0.2
+  path_to_cellranger_5 = '/mnt/scratch/beluga/michalik/cellranger5.0.1/cellranger-5.0.1/cellranger' # location of cellranger5.0.1
   path_to_reference_3 = 'Reference3'  # where reference for Cell Ranger 3.0.2 will be downloaded
   path_to_ref_data_5 = 'Reference5'   # where files for references for Cell Ranger 5.0.1 will be downloaded; here alsoCell Ranger reference will be created
   
+  # get absolute paths
+  path_to_cellranger_3 = os.path.abspath(path_to_cellranger_3)
+  path_to_cellranger_5 = os.path.abspath(path_to_cellranger_5)
+  path_to_reference_3 = os.path.abspath(path_to_reference_3)
+  path_to_ref_data_5 = os.path.abspath(path_to_ref_data_5)
+
   if ('' in [path_to_cellranger_3, path_to_cellranger_5, path_to_reference_3, path_to_ref_data_5]):
     sys.exit('One of required paths is undefined. Please fix this and run script again.')
   
@@ -45,7 +51,7 @@ if __name__ == '__main__':
   if(not os.path.exists('Homo_sapiens.GRCh38.dna.primary_assembly.fa')):
     os.system('gunzip Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz')
   
-  if(not os.path.exists('Homo_sapiens.GRCh38.102.gtf.gz')):  
+  if(not os.path.exists('Homo_sapiens.GRCh38.102.gtf')):  
     os.system('gunzip Homo_sapiens.GRCh38.102.gtf.gz')
   
   # filter gtf
@@ -69,8 +75,8 @@ if __name__ == '__main__':
     cellranger_path = path_to_cellranger_5
     transcriptome = os.path.join(path_to_ref_data_5, 'GRCh38_102')
     if (subdir == 'GSE187515'):
-      cellranger_path = path_to_cellranger_3
-      transcriptome = path_to_reference_3
+      cellranger_path = os.path.join(path_to_cellranger_3)
+      transcriptome = os.path.join(path_to_reference_3, 'refdata-cellranger-GRCh38-3.0.0')
     
     os.chdir(subdir)
     for id_run in subdirs[subdir]: 

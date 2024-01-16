@@ -18,8 +18,8 @@ IDAO.benchmark <- read.csv('../Benchmarks/IDEIS_benchmark_report.csv', sep = '\t
 complete.benchmark <- rbind(CD45er.benchmark, IDAO.benchmark)
 complete.benchmark$data <- factor(complete.benchmark$data, 
                                   levels = c("GSE187515_2004", "GSE187515_2023Rep1", "GSE187515_2023Rep2", 
-                                             "GSE212998_GFPpos_W1_pre_inf", "GSE212998_GFPpos_W2_pre_inf",
-                                             "GSE212998_GFPpos_W1_inf", "GSE212998_GFPpos_W2_inf", "GSE212998_GFPneg_inf"))
+                                             "GSE212998_GFP-pos-w1-expand", "GSE212998_GFP-pos-w2-expand",
+                                             "GSE212998_GFP-pos-w1", "GSE212998_GFP-pos-w2", "GSE212998_GFP-neg-expand"))
 ```
 
 Plot desired figure.

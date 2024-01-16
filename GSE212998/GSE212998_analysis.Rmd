@@ -68,6 +68,8 @@ CD45RA.FB.col <- 'red'
 CD45RO.FB.col <- 'dodgerblue2'
 CD45RA.CD45er.col <- 'deeppink'
 CD45RO.CD45er.col <- 'lightslateblue'
+
+CD45RA.CD45RO.IDEIS.col <- 'forestgreen'
 ```
 
 Create required directories.
@@ -345,6 +347,8 @@ lm1.CD45RO <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RO.FB, data = Ptpr
 
 lm1.CD45RA.bench <- lm(formula = average.CD45RA.PTPRC ~ average.CD45RA.CD45er, data = Ptprc.assay.counts)
 lm1.CD45RO.bench <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RO.CD45er, data = Ptprc.assay.counts)
+
+lm1.CD45RA.CD45RO <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RA.PTPRC, data = Ptprc.assay.counts)
 ```
 
 Get Pearson's correlation coefficient.
@@ -354,6 +358,7 @@ r.CD45RA <- cor(Ptprc.assay.counts$average.CD45RA.FB, Ptprc.assay.counts$average
 r.CD45RO <- cor(Ptprc.assay.counts$average.CD45RO.FB, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
 r.CD45RA.bench <- cor(Ptprc.assay.counts$average.CD45RA.CD45er, Ptprc.assay.counts$average.CD45RA.PTPRC, method = 'pearson')
 r.CD45RO.bench <- cor(Ptprc.assay.counts$average.CD45RO.CD45er, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
+r.CD45RA.CD45RO <- cor(Ptprc.assay.counts$average.CD45RA.PTPRC, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
 ```
 
 Now plot relation IDAO ~ FB.
@@ -432,6 +437,26 @@ scatterplot.lin.RO.bench <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
   theme_classic()
 
 print(scatterplot.lin.RO.bench)
+```
+
+Finally, plot relation between CD45RA and CD45RO obtained by IDEIS.
+
+```{r}
+scatterplot.lin.RA.RO.IDEIS <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.PTPRC, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.CD45RO.IDEIS.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RA - average of log2-normalized expression\n for IDEIS - detected reads') + ylab('CD45RO - average of log2-normalized expression\n for IDEIS - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.25)) +
+  annotate('text',  
+           col = CD45RA.CD45RO.IDEIS.col, x = 0.1, y = 0.1, 
+           label = paste0('y = ', round(lm1.CD45RA.CD45RO$coefficients[2], 2), ' + ',  round(lm1.CD45RA.CD45RO$coefficients[1], 2), '\nr=', round(r.CD45RA.CD45RO,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RA.CD45RO$coefficients[2], intercept = lm1.CD45RA.CD45RO$coefficients[1], col = CD45RA.CD45RO.IDEIS.col) + 
+  ggtitle('Relation between CD45RA and CD45RO expression \n as identified by IDEIS') +
+  theme_classic()
+
+print(scatterplot.lin.RA.RO.IDEIS)
 ```
 
 # Annotation
@@ -521,7 +546,6 @@ dim.plot.1.blank <- DimPlot(enter.integ.data) +
         legend.title=element_blank(),
         legend.text=element_blank(),
         legend.spacing.y = unit(0.4, 'cm'))
-print(dim.plot.1.blank) 
 ```
 
 ```{r}
@@ -569,7 +593,6 @@ dim.plot.2.blank <- DimPlot(enter.integ.data, group.by = 'stimulation', cols = c
         legend.title=element_blank(),
         legend.text=element_blank(),
         legend.spacing.y = unit(0.3, 'cm'))
-print(dim.plot.2.blank) 
 ```
 
 ```{r}
@@ -607,7 +630,6 @@ fb.plot.RA.adt.blank <- FeaturePlot(enter.integ.data, 'CD45RA', min.cutoff = 0) 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RA.adt.blank) 
 ```
 
 ```{r}
@@ -645,7 +667,6 @@ fb.plot.RA.calc.blank <- FeaturePlot(enter.integ.data, 'PTPRC-RA', min.cutoff = 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RA.calc.blank) 
 ```
 
 ```{r}
@@ -683,7 +704,6 @@ fb.plot.RA.CD45er.blank <- FeaturePlot(enter.integ.data, 'erCD45RA', min.cutoff 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RA.CD45er.blank) 
 ```
 
 ```{r}
@@ -721,7 +741,6 @@ fb.plot.RO.adt.blank <- FeaturePlot(enter.integ.data, 'CD45RO', min.cutoff = 0) 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RO.adt.blank) 
 ```
 
 ```{r}
@@ -760,7 +779,6 @@ fb.plot.RO.calc.blank <- FeaturePlot(enter.integ.data, 'PTPRC-RO', min.cutoff = 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RO.calc.blank) 
 ```
 
 ```{r}
@@ -798,7 +816,6 @@ fb.plot.RO.CD45er.blank <- FeaturePlot(enter.integ.data, 'erCD45RO', min.cutoff 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RO.CD45er.blank) 
 ```
 
 ```{r}
@@ -813,8 +830,8 @@ We also plot some markers that are useful for complementary analysis: SELL, CCR7
 Plot desired features.
 
 ```{r, message=F, warning=F}
-features.to.plot = c('SELL', 'CCL5', 'CCR7', 'GZMA', 'ISG15', 'IFNG', 'TNF', 'CXCR4', 'IL7R', 'GZMA', 'TCF7', 'IFIT3', 'IFIT2', 'KLF2')
-breaks <- c(4, 6, 4, 6, 4, 8, 6, 3, 4, 6, 3, 4, 4, 3, 4, 4)
+features.to.plot = c('SELL', 'CCL5', 'CCR7', 'GZMA', 'ISG15', 'IFNG', 'TNF', 'CXCR4', 'IL7R', 'GZMA', 'TCF7', 'IFIT3', 'IFIT2', 'KLF2', 'FOXP3', 'KLRB1')
+breaks <- c(4, 6, 4, 6, 4, 8, 6, 3, 4, 6, 3, 4, 4, 3, 4, 4, 4, 4)
 
 i <- 0
 for(feature in features.to.plot){
@@ -825,7 +842,7 @@ for(feature in features.to.plot){
     scale_x_continuous(breaks=c(-10, 0, 10)) +
     scale_y_continuous(breaks=c(-6, 0, 6)) +
     theme(plot.title = element_text(hjust = 0.5))
-  #print(fb.plot) 
+  print(fb.plot) 
   
   tiff(paste0('Figure_3/GSE212998_FeaturePlot_', feature, '.tiff'), width = 7, height = 6, units = 'in', res = 200)
   print(fb.plot)
@@ -863,6 +880,12 @@ print(scatterplot.lin.RO)
 dev.off()
 ```
 
+```{r}
+tiff('Figure_3/GSE212998_scatter_RA_RO.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RA.RO.IDEIS)
+dev.off()
+```
+
 As before, we make textless version.
 
 ```{r}
@@ -879,7 +902,6 @@ scatterplot.lin.RA.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RA.blank)
 
 
 scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.FB, y = average.CD45RO.PTPRC, label = clusters)) +
@@ -895,7 +917,19 @@ scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RO.blank)
+
+scatterplot.lin.RA.RO.IDEIS.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.PTPRC, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.CD45RO.IDEIS.col, size = 4) +
+  xlab('\n') + ylab('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.25)) +
+  geom_abline(slope = lm1.CD45RA.CD45RO$coefficients[2], intercept = lm1.CD45RA.CD45RO$coefficients[1], col = CD45RA.CD45RO.IDEIS.col) + 
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
 ```
 
 ```{r}
@@ -907,6 +941,12 @@ dev.off()
 ```{r}
 tiff('Figure_3/GSE212998_scatter_RO_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
 print(scatterplot.lin.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_3/GSE212998_scatter_RA_RO_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
+print(scatterplot.lin.RA.RO.IDEIS.blank)
 dev.off()
 ```
 
@@ -938,8 +978,6 @@ scatterplot.lin.RA.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = aver
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RA.bench.blank)
-
 
 scatterplot.lin.RO.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.CD45er, y = average.CD45RO.PTPRC, label = clusters)) +
   geom_point(color = CD45RO.IDAO.col, size = 4) +
@@ -954,7 +992,6 @@ scatterplot.lin.RO.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = aver
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RO.bench.blank)
 ```
 
 ```{r}

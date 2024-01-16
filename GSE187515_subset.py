@@ -3,7 +3,7 @@
 import os, sys , glob
 
 ncores = 20
-bam_path = 'GSE187515/'
+bam_path = 'Benchmarks/subset_bams'
 subsampled_path = 'GSE187515/Subset_bam'
 whitelists = 'GSE187515/Whitelists'
 source_exps = ['2004', '2023Rep1', '2023Rep2']
@@ -13,7 +13,7 @@ target_path = 'GSE187515/IDEIS_subset'
 
 if __name__ == "__main__":
   for source_exp in source_exps:
-    bam_path_complete = os.path.join(bam_path, source_exp, 'outs', 'possorted_genome_bam.bam')
+    bam_path_complete = os.path.join(bam_path, 'GSE187515_' + source_exp + '_possorted_genome_bam.bam')
     subsampled_path_complete = os.path.join(subsampled_path, source_exp)
     target_path_complete = os.path.join(target_path, '%s_subset'%source_exp)
     
@@ -28,7 +28,7 @@ if __name__ == "__main__":
       subsampled_file =  os.path.join(subsampled_path_complete, "%s_possorted_genome_bam_%d.bam"%(source_exp, perc))
       
       print('samtools view -s %f -b %s -@ %d > %s'%(0.01*perc, bam_path_complete, ncores, subsampled_file))
-      os.system('samtools view -s %f -b %s -@ %d > %s'%(0.01*perc, bam_path_complete, ncores, subsampled_file))
+      os.system('samtools view --subsample %f --subsample-seed 42 -b %s -@ %d > %s'%(0.01*perc, bam_path_complete, ncores, subsampled_file))
       os.system('samtools index %s'%(subsampled_file))
       
       # now run IDEIS

@@ -76,7 +76,7 @@ python benchmark_IDEIS.py
 cd ..
 ```
 
-11.) Create subsampled data of GSE187515 with only certain percentages used, then use next step to count reads that are mapping to used genome for each subsampling percentage.  Warning: These steps can take a lot of time.
+11.) Create subsampled data of GSE187515 with only certain percentages used, then use next step to count reads that are mapping to used genome for each subsampling percentage.  Warning: This step can take a lot of time.
 
 ```
 python GSE187515_subset.py

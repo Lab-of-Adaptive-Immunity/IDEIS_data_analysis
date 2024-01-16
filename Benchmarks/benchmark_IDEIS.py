@@ -14,7 +14,7 @@ def run_IDEIS(software_path, reference_path, bam_path, abs_res_path, cell_select
   time_results = str(error, 'utf-8') # real, user and system time; total cpu time is user + system time
   #print(time_results.split('\n')[-2])
   time_results = time_results.split('\n')[-2].strip().split(',')
-  res_line = '%s\t%d\t%s\t%s\t%s\t%s\t%s\n'%(paths[0].replace('/', '_'), n_run+1, 'IdAO_' + option, time_results[0], time_results[1], time_results[2], str(float(time_results[1]) + float(time_results[2])))
+  res_line = '%s\t%d\t%s\t%s\t%s\t%s\t%s\n'%(paths[0].replace('/', '_'), n_run+1, 'IDEIS_' + option, time_results[0], time_results[1], time_results[2], str(float(time_results[1]) + float(time_results[2])))
   queue.put(res_line)
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ def run_CD45er(software_path, bam_path, reference_path, n_run, queue):
   print('On time:')
   print(time_results.split('\n')[-2])
   time_results = time_results.split('\n')[-2].strip().split(',')
-  res_line = '%s\t%d\t%s\t%s\t%s\t%s\t%s\n'%(paths[0].replace('/', '_'), n_run+1, 'IdAO_', time_results[0], time_results[1], time_results[2], str(float(time_results[1]) + float(time_results[2])))
+  res_line = '%s\t%d\t%s\t%s\t%s\t%s\t%s\n'%(paths[0].replace('/', '_'), n_run+1, 'CD45er', time_results[0], time_results[1], time_results[2], str(float(time_results[1]) + float(time_results[2])))
   queue.put(res_line)
   
 if __name__ == "__main__":

@@ -363,7 +363,7 @@ lims <- c(2,2,2,2)
 max.cut <- c(2,2,2,2)
 
 for(i in 1:length(feature.to.list)){
-  fb.plot <- FeaturePlot(pool.integrated, feature.to.list[i], min.cutoff = 0, max.cutoff = max.cut[i]) + 
+  fb.plot <- FeaturePlot(pool.integrated, feature.to.list[i], min.cutoff = 0, max.cutoff = max.cut[i], pt.size = 0.75) + 
     ggtitle(paste0('PBMC (PRJEB40376) - ', name.tags[i])) + 
     scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
     scale_x_continuous(breaks=c(-10, 0, 10)) +
@@ -375,7 +375,7 @@ for(i in 1:length(feature.to.list)){
   print(fb.plot)
   dev.off()
   
-  fb.plot.blank <- FeaturePlot(pool.integrated, feature.to.list[i], min.cutoff = 0, max.cutoff = max.cut[i]) + 
+  fb.plot.blank <- FeaturePlot(pool.integrated, feature.to.list[i], min.cutoff = 0, max.cutoff = max.cut[i],  pt.size = 0.75) + 
     ggtitle('') + xlab('') + ylab('') +
     scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
     scale_x_continuous(breaks=c(-10, 0, 10)) +
@@ -385,7 +385,6 @@ for(i in 1:length(feature.to.list)){
           axis.text.y=element_blank(),
           legend.title=element_blank(),
           legend.text=element_blank())
-  print(fb.plot.blank) 
   
   tiff(paste0('Figure_7/PRJEB40376_FeaturePlot_', name.tags[i], '_blank.tiff'), width = 6.5, height = 6, units = 'in', res = 200)
   print(fb.plot.blank)
@@ -396,8 +395,8 @@ for(i in 1:length(feature.to.list)){
 Plot desired features.
 
 ```{r, message=F, warning=F}
-features.to.plot = c('CD28', 'CD79A', 'CD3D', 'CD4', 'CD8A', 'CD14', 'KLRK1', 'SELL', 'CCR7', 'CCL5')
-breaks <- c(3,4,4,3,3,4,2,3,4,5)
+features.to.plot <- c('CD28', 'CD79A', 'CD3D', 'CD4', 'CD8A', 'CD14', 'KLRK1', 'SELL', 'CCR7', 'CCL5', 'GZMA', 'ITGB2', 'FCER1G', 'ITGAM', 'ITGAX')
+breaks <- c(3,4,4,3,3,4,2,3,4,5,5,3,5,2,3)
 
 i <- 0
 for(feature in features.to.plot){
@@ -408,7 +407,7 @@ for(feature in features.to.plot){
     scale_x_continuous(breaks=c(-10, 0, 10)) +
     scale_y_continuous(breaks=c(-10, 0, 10)) +
     theme(plot.title = element_text(hjust = 0.5))
-  #print(fb.plot) 
+  print(fb.plot) 
   
   tiff(paste0('Figure_7/PRJEB40376_FeaturePlot_', feature, '.tiff'), width = 7, height = 6, units = 'in', res = 200)
   print(fb.plot)
@@ -424,7 +423,6 @@ for(feature in features.to.plot){
           axis.text.y=element_blank(),
           legend.title=element_blank(),
           legend.text=element_blank())
-  #print(fb.plot.blank) 
   
   tiff(paste0('Figure_7/PRJEB40376_FeaturePlot_', feature, '_blank.tiff'), width = 6.5, height = 6, units = 'in', res = 200)
   print(fb.plot.blank)
@@ -478,7 +476,6 @@ scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RO.blank)
 ```
 
 ```{r}

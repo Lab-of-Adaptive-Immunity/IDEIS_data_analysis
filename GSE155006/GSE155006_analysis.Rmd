@@ -61,6 +61,8 @@ CD45RA.col <- 'firebrick3'
 CD45RB.col <- 'green4'
 CD45RC.col <- 'gray20'
 CD45RO.col <- 'darkorchid2'
+
+CD45RB.CD45RO.IDEIS.col <- 'forestgreen'
 ```
 
 Create required directories.
@@ -436,7 +438,7 @@ name.tags <- c('CD45RA', 'CD45RB', 'CD45RC', 'CD45RO')
 lims <- c(1,1,0.5,1)
 
 for(i in 1:length(feature.to.list)){
-  fb.plot <- FeaturePlot(mm.mog.integ.data, feature.to.list[i], min.cutoff = 0) + 
+  fb.plot <- FeaturePlot(mm.mog.integ.data, feature.to.list[i], min.cutoff = 0, pt.size = 0.75) + 
     ggtitle(paste0('PBMC (GSE155006) - ', name.tags[i], ' -IdAO')) + 
     scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
     scale_x_continuous(breaks=c(-15, 0, 10)) +
@@ -448,7 +450,7 @@ for(i in 1:length(feature.to.list)){
   print(fb.plot)
   dev.off()
   
-  fb.plot.blank <- FeaturePlot(mm.mog.integ.data, feature.to.list[i], min.cutoff = 0) + 
+  fb.plot.blank <- FeaturePlot(mm.mog.integ.data, feature.to.list[i], min.cutoff = 0, pt.size = 0.75) + 
     ggtitle('') + xlab('') + ylab('') +
     scale_colour_gradient(breaks = c(0,lims[i]), low = 'grey85', high = colors[i]) +
     scale_x_continuous(breaks=c(-15, 0, 10)) +
@@ -503,4 +505,3 @@ for(feature in features.to.plot){
   dev.off()
 }
 ```
-

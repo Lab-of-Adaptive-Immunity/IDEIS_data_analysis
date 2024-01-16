@@ -69,6 +69,7 @@ CD45RA.FB.col <- 'red'
 CD45RO.FB.col <- 'dodgerblue2'
 CD45RA.CD45er.col <- 'deeppink'
 CD45RO.CD45er.col <- 'lightslateblue'
+CD45RA.CD45RO.IDEIS.col <- 'forestgreen'
 ```
 
 Create required directories.
@@ -444,6 +445,8 @@ lm1.CD45RO <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RO.FB, data = Ptpr
 
 lm1.CD45RA.bench <- lm(formula = average.CD45RA.PTPRC ~ average.CD45RA.CD45er, data = Ptprc.assay.counts)
 lm1.CD45RO.bench <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RO.CD45er, data = Ptprc.assay.counts)
+
+lm1.CD45RA.CD45RO <- lm(formula = average.CD45RO.PTPRC ~ average.CD45RA.PTPRC, data = Ptprc.assay.counts)
 ```
 
 Also compute Pearson's correlation coefficients.
@@ -453,6 +456,7 @@ r.CD45RA <- cor(Ptprc.assay.counts$average.CD45RA.FB, Ptprc.assay.counts$average
 r.CD45RO <- cor(Ptprc.assay.counts$average.CD45RO.FB, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
 r.CD45RA.bench <- cor(Ptprc.assay.counts$average.CD45RA.CD45er, Ptprc.assay.counts$average.CD45RA.PTPRC, method = 'pearson')
 r.CD45RO.bench <- cor(Ptprc.assay.counts$average.CD45RO.CD45er, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
+r.CD45RA.CD45RO <- cor(Ptprc.assay.counts$average.CD45RA.PTPRC, Ptprc.assay.counts$average.CD45RO.PTPRC, method = 'pearson')
 ```
 
 Now plot IdAO ~ FB relation.
@@ -533,6 +537,26 @@ scatterplot.lin.RO.bench <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
 print(scatterplot.lin.RO.bench)
 ```
 
+Finally, plot relation between CD45RA and CD45RO obtained by IDEIS.
+
+```{r}
+scatterplot.lin.RA.RO.IDEIS <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.PTPRC, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.CD45RO.IDEIS.col, size = 4) +
+  geom_text_repel(size = 4) +
+  xlab('CD45RA - average of log2-normalized expression\n for IDEIS - detected reads') + ylab('CD45RO - average of log2-normalized expression\n for IDEIS - detected reads') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  annotate('text',  
+           col = CD45RA.CD45RO.IDEIS.col, x = 0.1, y = 0.1, 
+           label = paste0('y = ', round(lm1.CD45RA.CD45RO$coefficients[2], 2), ' + ',  round(lm1.CD45RA.CD45RO$coefficients[1], 2), '\nr=', round(r.CD45RA.CD45RO,2)),
+           hjust = 0) +
+  geom_abline(slope = lm1.CD45RA.CD45RO$coefficients[2], intercept = lm1.CD45RA.CD45RO$coefficients[1], col = CD45RA.CD45RO.IDEIS.col) + 
+  ggtitle('Relation between CD45RA and CD45RO expression \n as identified by IDEIS') +
+  theme_classic()
+
+print(scatterplot.lin.RA.RO.IDEIS)
+```
+
 # Annotation
 
 We use SingleR package for annotation.
@@ -599,7 +623,7 @@ dim.plot.1.blank <- DimPlot(HIV.integ.data) +
         legend.title=element_blank(),
         legend.text=element_blank(),
         legend.spacing.y = unit(0.4, 'cm'))
-print(dim.plot.1.blank) 
+
 ```
 
 ```{r}
@@ -633,7 +657,7 @@ fb.plot.RA.adt.blank <- FeaturePlot(HIV.integ.data, 'CD45RA', min.cutoff = 0) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RA.adt.blank) 
+
 ```
 
 ```{r}
@@ -668,7 +692,7 @@ fb.plot.RA.calc.blank <- FeaturePlot(HIV.integ.data, 'ptprc_PTPRC-RA', min.cutof
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RA.calc.blank) 
+
 ```
 
 ```{r}
@@ -702,7 +726,7 @@ fb.plot.RA.CD45er.blank <- FeaturePlot(HIV.integ.data, 'erCD45RA', min.cutoff = 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RA.CD45er.blank) 
+
 ```
 
 ```{r}
@@ -736,7 +760,7 @@ fb.plot.RO.adt.blank <- FeaturePlot(HIV.integ.data, 'CD45RO', min.cutoff = 0) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RO.adt.blank) 
+
 ```
 
 ```{r}
@@ -771,7 +795,7 @@ fb.plot.RO.calc.blank <- FeaturePlot(HIV.integ.data, 'ptprc_PTPRC-RO', min.cutof
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RO.calc.blank) 
+
 ```
 
 ```{r}
@@ -805,7 +829,7 @@ fb.plot.RO.CD45er.blank <- FeaturePlot(HIV.integ.data, 'erCD45RO', min.cutoff = 
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.RO.CD45er.blank) 
+
 ```
 
 ```{r}
@@ -841,7 +865,7 @@ fb.plot.sell.blank <- FeaturePlot(HIV.integ.data, 'SELL', min.cutoff = 0) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.sell.blank) 
+
 ```
 
 ```{r}
@@ -875,7 +899,7 @@ fb.plot.ccl5.blank <- FeaturePlot(HIV.integ.data, 'CCL5', min.cutoff = 0) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.ccl5.blank) 
+
 ```
 
 ```{r}
@@ -909,7 +933,7 @@ fb.plot.ccr7.blank <- FeaturePlot(HIV.integ.data, 'CCR7', min.cutoff = 0) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.ccr7.blank) 
+
 ```
 
 ```{r}
@@ -943,7 +967,7 @@ fb.plot.gzma.blank <- FeaturePlot(HIV.integ.data, 'GZMA', min.cutoff = 0) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.gzma.blank) 
+
 ```
 
 ```{r}
@@ -955,21 +979,21 @@ dev.off()
 IL7R:
 
 ```{r}
-fb.plot.gzma <- FeaturePlot(HIV.integ.data, 'IL7R', min.cutoff = 0) + 
+fb.plot.il7r <- FeaturePlot(HIV.integ.data, 'IL7R', min.cutoff = 0) + 
   ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - IL7R') + 
   scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
   theme(plot.title = element_text(hjust = 0.5))
-print(fb.plot.gzma) 
+print(fb.plot.il7r) 
 ```
 
 ```{r}
 tiff('Figure_2/GSE187515_FeaturePlot_IL7R.tiff', width = 7, height = 6, units = 'in', res = 200)
-print(fb.plot.gzma)
+print(fb.plot.il7r)
 dev.off()
 ```
 
 ```{r}
-fb.plot.gzma.blank <- FeaturePlot(HIV.integ.data, 'IL7R', min.cutoff = 0) + 
+fb.plot.il7r.blank <- FeaturePlot(HIV.integ.data, 'IL7R', min.cutoff = 0) + 
   ggtitle('') + xlab('') + ylab('') +
   scale_colour_gradient(breaks = c(0,4), low = 'grey85', high = 'blue') +
   theme(plot.title = element_text(hjust = 0.5),
@@ -977,12 +1001,45 @@ fb.plot.gzma.blank <- FeaturePlot(HIV.integ.data, 'IL7R', min.cutoff = 0) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-print(fb.plot.gzma.blank) 
 ```
 
 ```{r}
 tiff('Figure_2/GSE187515_FeaturePlot_IL7R_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
-print(fb.plot.gzma.blank)
+print(fb.plot.il7r.blank)
+dev.off()
+```
+
+FOXP3:
+
+```{r}
+fb.plot.foxp3 <- FeaturePlot(HIV.integ.data, 'FOXP3', min.cutoff = 0) + 
+  ggtitle('CD4+ cells from unstimulated, healthy controls \n from HIV infection project (GSE187515) - FOXP3') + 
+  scale_colour_gradient(breaks = c(0,3), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5))
+print(fb.plot.foxp3) 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_FOXP3.tiff', width = 7, height = 6, units = 'in', res = 200)
+print(fb.plot.foxp3)
+dev.off()
+```
+
+```{r}
+fb.plot.foxp3.blank <- FeaturePlot(HIV.integ.data, 'FOXP3', min.cutoff = 0) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_colour_gradient(breaks = c(0,3), low = 'grey85', high = 'blue') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+ 
+```
+
+```{r}
+tiff('Figure_2/GSE187515_FeaturePlot_FOXP3_blank.tiff', width = 6.5, height = 6, units = 'in', res = 200)
+print(fb.plot.foxp3.blank)
 dev.off()
 ```
 
@@ -1000,6 +1057,11 @@ print(scatterplot.lin.RO)
 dev.off()
 ```
 
+```{r}
+tiff('Figure_2/GSE187515_scatter_RA-RO.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RA.RO.IDEIS)
+dev.off()
+```
 As before, we make textless version.
 
 ```{r}
@@ -1016,9 +1078,6 @@ scatterplot.lin.RA.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RA.blank)
-
-
 scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.FB, y = average.CD45RO.PTPRC, label = clusters)) +
   geom_point(color = CD45RO.IDAO.col, size = 4) +
   xlab('') + ylab('\n') + 
@@ -1032,7 +1091,20 @@ scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RO.blank)
+scatterplot.lin.RA.RO.IDEIS.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.PTPRC, y = average.CD45RO.PTPRC, label = clusters)) +
+  geom_point(color = CD45RA.CD45RO.IDEIS.col, size = 4) +
+  xlab('\n') + ylab('\n') +
+  scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
+  geom_abline(slope = lm1.CD45RA.CD45RO$coefficients[2], intercept = lm1.CD45RA.CD45RO$coefficients[1], col = CD45RA.CD45RO.IDEIS.col) + 
+  ggtitle('\n') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+
 ```
 
 ```{r}
@@ -1044,6 +1116,12 @@ dev.off()
 ```{r}
 tiff('Figure_2/GSE187515_scatter_RO_blank.tiff', width = 6, height = 6, units = 'in', res = 200)
 print(scatterplot.lin.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_2/GSE187515_scatter_RA-RO_blank.tiff', width = 7, height = 7, units = 'in', res = 200)
+print(scatterplot.lin.RA.RO.IDEIS.blank)
 dev.off()
 ```
 
@@ -1184,11 +1262,6 @@ scatter.RO.avg.subs.blank <- ggplot(subset.stats, aes(x = read.count.div.cell, y
   theme_classic() +
   theme(axis.text.x=element_blank(),
         axis.text.y=element_blank())
-
-print(scatter.RA.frac.subs.blank)
-print(scatter.RA.avg.subs.blank)
-print(scatter.RO.frac.subs.blank)
-print(scatter.RO.avg.subs.blank)
 
 tiff('Figure_4/GSE187515_scatter_RA_frac_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
 print(scatter.RA.frac.subs.blank)
@@ -1467,7 +1540,7 @@ Plot all of the above.
 ```{r}
 mm.RA.ppc <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells), col = CD45RA.IDAO.col) +
-  geom_line(col = 'firebrick2') +
+  geom_line(col = CD45RA.IDAO.col) +
   geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_text(data = data.frame(x=0,y=CD45RA.ppc.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
   geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2], yend = CD45RA.ppc.nls$coefficients[1]/2, 
@@ -1483,7 +1556,7 @@ mm.RA.ppc <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction
 
 mm.RO.ppc <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells), col = CD45RO.IDAO.col) +
-  geom_line(col = 'darkorchid2') +
+  geom_line(col = CD45RO.IDAO.col) +
   geom_hline(yintercept = CD45RO.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_text(data = data.frame(x=0,y=CD45RO.ppc.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
   xlab('Average number of reads per cell') +
@@ -1499,7 +1572,7 @@ mm.RO.ppc <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction
 
 mm.RA.avg <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg), col = CD45RA.IDAO.col) +
-  geom_line(col = 'firebrick2') +
+  geom_line(col = CD45RA.IDAO.col) +
   geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_text(data = data.frame(x=0,y=CD45RA.avg.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
   geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
@@ -1515,7 +1588,7 @@ mm.RA.avg <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction
 
 mm.RO.avg <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg), col = CD45RO.IDAO.col) +
-  geom_line(col = 'darkorchid2') +
+  geom_line(col = CD45RO.IDAO.col) +
   geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_text(data = data.frame(x=0,y=CD45RO.avg.nls$coefficients[1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
   geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
@@ -1566,7 +1639,7 @@ Make blank plots.
 ```{r}
 mm.RA.ppc.blank <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells), col = CD45RA.IDAO.col) +
-  geom_line(col = 'firebrick2') +
+  geom_line(col = CD45RA.IDAO.col) +
   geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1,1]/2, 
                linetype = "dashed", colour = "black") +
@@ -1585,7 +1658,7 @@ mm.RA.ppc.blank <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Pred
 
 mm.RO.ppc.blank <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells), col = CD45RO.IDAO.col) +
-  geom_line(col = 'darkorchid2') +
+  geom_line(col = CD45RO.IDAO.col) +
   geom_hline(yintercept = CD45RO.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   xlab('') +
   ylab('') +
@@ -1604,7 +1677,7 @@ mm.RO.ppc.blank <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Pred
 
 mm.RA.avg.blank <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg), col = CD45RA.IDAO.col) +
-  geom_line(col = 'firebrick2') +
+  geom_line(col = CD45RA.IDAO.col) +
   geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
                linetype = "dashed", colour = "black") +
@@ -1623,7 +1696,7 @@ mm.RA.avg.blank <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Pred
 
 mm.RO.avg.blank <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
   geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg), col = CD45RO.IDAO.col) +
-  geom_line(col = 'darkorchid2') +
+  geom_line(col = CD45RO.IDAO.col) +
   geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
                linetype = "dashed", colour = "black") +
@@ -1639,11 +1712,6 @@ mm.RO.avg.blank <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Pred
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-
-print(mm.RA.ppc.blank)
-print(mm.RO.ppc.blank)
-print(mm.RA.avg.blank)
-print(mm.RO.avg.blank)
 ```
 
 Write.

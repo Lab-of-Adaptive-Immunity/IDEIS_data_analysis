@@ -1430,68 +1430,9 @@ Now we will use fit of square root function and extrapolation of limits. Table w
 print(subset.stats)
 ```
 
-```{r}
-subset.stats.squared <- subset.stats %>% dplyr::mutate(read.count.div.cell.1 = read.count.div.cell^(1/4),
-                                                       read.count.div.cell.2 = log(read.count.div.cell,10))
-
-quadratic.fit.ppc.RA <- lm(data = subset.stats.squared, CD45RA.perc.pos.cells ~ read.count.div.cell.1)
-quadratic.fit.ppc.RO <- lm(data = subset.stats.squared, CD45RO.perc.pos.cells ~ read.count.div.cell.1)
-quadratic.fit.avg.RA <- lm(data = subset.stats.squared, CD45RA.avg ~ read.count.div.cell.2)
-quadratic.fit.avg.RO <- lm(data = subset.stats.squared, CD45RO.avg ~ read.count.div.cell.2)
-```
-
-Now do predictions for higher ranges and plot them
-
-```{r}
-read.count.div.cell.range <- seq(1, 100, 1) * 10^3
-predictions.ppc.RA <- predict(quadratic.fit.ppc.RA, list(read.count.div.cell = read.count.div.cell.range, read.count.div.cell.1 = read.count.div.cell.range^(1/4)))
-predictions.ppc.RA.frame <- data.frame(read.count.div.cell = read.count.div.cell.range,  quadratic.fit.ppc.RA = predictions.ppc.RA)
-
-ggplot() +
- geom_point(data = subset.stats.squared, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells, color = 'Subsampled')) +
- geom_line(data = predictions.ppc.RA.frame, aes(x = read.count.div.cell, y = quadratic.fit.ppc.RA, color = 'Predicted')) +
- xlab('Reads per cells') + ylab('Fraction of cells that are PTPRC-RA positive') +
- ggtitle('Fraction of cells that are PTPRC-RA+ \n -Prediction') +
- guides(color=guide_legend("")) +
- scale_color_manual(
-   values = c('Subsampled' = "firebrick3", 'Predicted' = "firebrick1")
- ) +
- theme_classic()
-
-read.count.div.cell.range <- seq(1, 100, 1) * 10^3
-predictions.ppc.RO <- predict(quadratic.fit.ppc.RO, list(read.count.div.cell = read.count.div.cell.range, read.count.div.cell.1 = read.count.div.cell.range^(1/4)))
-predictions.ppc.RO.frame <- data.frame(read.count.div.cell = read.count.div.cell.range,  quadratic.fit.ppc.RO = predictions.ppc.RO)
-
-ggplot() +
- geom_point(data = subset.stats.squared, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells, color = 'Subsampled')) +
- geom_line(data = predictions.ppc.RO.frame, aes(x = read.count.div.cell, y = quadratic.fit.ppc.RO, color = 'Predicted')) +
- xlab('Reads per cells') + ylab('Fraction of cells that are PTPRC-RO positive') +
- ggtitle('Fraction of cells that are PTPRC-RO+ \n -Prediction') +
- guides(color=guide_legend("")) +
- scale_color_manual(
-   values = c('Subsampled' = "darkorchid3", 'Predicted' = "darkorchid1")
- ) +
- theme_classic()
-
-read.count.div.cell.range <- seq(1, 100, 1) * 10^3
-predictions.avg.RA <- predict(quadratic.fit.avg.RA, list(read.count.div.cell = read.count.div.cell.range, read.count.div.cell.2 = log(read.count.div.cell.range, 10)))
-predictions.avg.RA.frame <- data.frame(read.count.div.cell = read.count.div.cell.range,  quadratic.fit.avg.RA = predictions.avg.RA)
-
-ggplot() +
- geom_point(data = subset.stats.squared, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells, color = 'Subsampled')) +
- geom_line(data = predictions.avg.RA.frame, aes(x = read.count.div.cell, y = quadratic.fit.avg.RA, color = 'Predicted')) +
- xlab('Reads per cells') + ylab('Fraction of cells that are PTPRC-RA positive') +
- ggtitle('Average PTPRC_RA expression in cells \n - Prediction') +
- guides(color=guide_legend("")) +
- scale_color_manual(
-   values = c('Subsampled' = "firebrick3", 'Predicted' = "firebrick1")
- ) +
- theme_classic()
-```
-
 # Fitting Two-parameter Relative model
 
-We now try to fit model Y = a*X/(X+b). This model was chosen because all values here should exhibit asymptotic behavior and this model has shown behaviour than regular asymptotic regression model. We use nls package for this purpose. First show data to plot again.
+We now try to fit model Y = a*X/(X+b). This model was chosen because all values here should exhibit asymptotic behavior and this model has shown behavior than regular asymptotic regression model. We use nls package for this purpose. First show data to plot again.
 
 ```{r}
 print(subset.stats)

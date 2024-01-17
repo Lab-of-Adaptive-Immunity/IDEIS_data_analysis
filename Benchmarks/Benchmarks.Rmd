@@ -73,3 +73,22 @@ tiff('../GSE187515/Figure_6/Benchmark.tiff', width = 7, height = 5, units = 'in'
 print(benchmark.plot.blank)
 dev.off()
 ```
+
+Determine how faster IDEIS software is. We first find min and max times for each data set and software + option. Then we divide min CD45er time by max IDEIS time and max CD45er time by min IDEIS time to get lower and upper limits.
+
+```{r}
+limits.benchmark <- complete.benchmark %>% dplyr::group_by(data,analysis) %>% dplyr::summarise(CPU.time.min = min(CPU.time), CPU.time.max = max(CPU.time))
+
+# limits for force cells
+interv.force.cells <- c(limits.benchmark$CPU.time.max[limits.benchmark$analysis == 'CD45er']/limits.benchmark$CPU.time.min[limits.benchmark$analysis == 'IDEIS_force_cells'],
+                        limits.benchmark$CPU.time.min[limits.benchmark$analysis == 'CD45er']/limits.benchmark$CPU.time.max[limits.benchmark$analysis == 'IDEIS_force_cells'])
+  
+print(c(min(interv.force.cells), max(interv.force.cells)))
+
+# limits for whitelist
+interv.whitelist <- c(limits.benchmark$CPU.time.max[limits.benchmark$analysis == 'CD45er']/limits.benchmark$CPU.time.min[limits.benchmark$analysis == 'IDEIS_whitelist'],
+                      limits.benchmark$CPU.time.min[limits.benchmark$analysis == 'CD45er']/limits.benchmark$CPU.time.max[limits.benchmark$analysis == 'IDEIS_whitelist'])
+  
+print(c(min(interv.whitelist), max(interv.whitelist)))
+```
+

@@ -489,3 +489,372 @@ tiff('Figure_7/PRJEB40376_scatter_RO_blank.tiff', width = 6, height = 6, units =
 print(scatterplot.lin.RO.blank)
 dev.off()
 ```
+
+# Subsampling analysis
+
+Now we load sub-sampling analyses for Pool_1 only.
+
+```{r}
+pool.1 <- subset(pool.integrated, orig.ident == 'Pool_1')
+```
+
+Load assays with various subset frequencies, then normalize them.
+
+```{r}
+percentages <- c(25,50,75,100)
+
+for(perc in percentages){
+  ptprc.pool.minus <- readRDS(paste0('Ptprc/Ptprc_Pool_1_subset_', perc, '_minus100.rds'))
+  ptprc.pool.plus <- readRDS(paste0('Ptprc/Ptprc_Pool_1_subset_', perc, '_plus100.rds'))
+  ptprc.pool <- ptprc.pool.minus + ptprc.pool.plus 
+  colnames(ptprc.pool) <- paste0(colnames(ptprc.pool), '_1')
+  ptprc.pool <- ptprc.pool[,colnames(ptprc.pool) %in% colnames(pool.1)]
+  pool.1[[paste0('Ptprc', perc)]] <- CreateAssayObject(ptprc.pool)
+  pool.1 <- NormalizeData(pool.1, normalization.method = "CLR", margin = 2, assay = paste0('Ptprc', perc))
+}
+```
+
+Now we re-process the data. Since this analysis includes only data from a single pool, we do not need to perform integration.
+
+```{r}
+DefaultAssay(pool.1) <- 'RNA'
+pool.1 <- NormalizeData(object = pool.1)
+pool.1 <- FindVariableFeatures(pool.1, selection.method = "vst",
+                               nfeatures = 1000, verbose = FALSE)
+    
+pool.1 <- ScaleData(pool.1, verbose = FALSE)
+pool.1 <- RunPCA(pool.1, npcs = 20, verbose = FALSE)
+pool.1 <- RunUMAP(pool.1, reduction = "pca", dims = 1:20)
+    
+pool.1 <- FindNeighbors(pool.1, dims = 1:20)
+pool.1 <- FindClusters(pool.1, resolution = 0.5) 
+```
+
+```{r, warning=F, message=F}
+DimPlot(pool.1, label = T) + ggtitle('PBMC - PRJEB40376 - Pool 1')
+VlnPlot(pool.1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 2, pt.size = 0)
+```
+
+Now compute PTPRC-RA and PTPRC-RO coverages.
+
+```{r}
+read.counts <- read.csv('counted_bam.txt', sep = '\t')
+
+subset.stats <- data.frame(percentages = seq(25,100,25),
+                           read.count.div.cell = read.counts$read.count,
+                           CD45RA.perc.pos.cells = rep(0,4),
+                           CD45RO.perc.pos.cells = rep(0,4),
+                           CD45RA.avg = rep(0,4),
+                           CD45RO.avg = rep(0,4),
+                           row.names = seq(25,100,25))
+
+
+for(perc in seq(25,75,25)){
+  counts.raw <- GetAssayData(pool.1, assay = paste0('Ptprc', perc), slot = 'count')
+  counts.RA <- counts.raw['PTPRC-RA',]
+  counts.RO <- counts.raw['PTPRC-RO',]
+  
+  subset.stats[as.character(perc),3] <- length(counts.RA[counts.RA > 0])
+  subset.stats[as.character(perc),4] <- length(counts.RO[counts.RO > 0]) 
+  subset.stats[as.character(perc),5] <- mean(counts.RA)
+  subset.stats[as.character(perc),6] <- mean(counts.RO)
+}
+
+counts.raw <- GetAssayData(pool.1, assay = 'Ptprc100', slot = 'count')
+counts.RA <- counts.raw['PTPRC-RA',]
+counts.RO <- counts.raw['PTPRC-RO',]
+  
+subset.stats['100', 3] <- length(counts.RA[counts.RA > 0])
+subset.stats['100', 4] <- length(counts.RO[counts.RO > 0]) 
+subset.stats['100', 5] <- mean(counts.RA)
+subset.stats['100', 6] <- mean(counts.RO)
+
+subset.stats[,3] <- subset.stats[,3]/ncol(counts.raw)
+subset.stats[,4] <- subset.stats[,4]/ncol(counts.raw)
+```
+
+Now use fit for all variables of interest to model Y = a*X/(X+b).
+
+```{r, warning = F}
+CD45RA.ppc.nls.reg <- nls(CD45RA.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
+CD45RO.ppc.nls.reg <- nls(CD45RO.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
+CD45RA.avg.nls.reg <- nls(CD45RA.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
+CD45RO.avg.nls.reg <- nls(CD45RO.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
+
+CD45RA.ppc.nls <- summary(CD45RA.ppc.nls.reg)
+CD45RO.ppc.nls <- summary(CD45RO.ppc.nls.reg)
+CD45RA.avg.nls <- summary(CD45RA.avg.nls.reg)
+CD45RO.avg.nls <- summary(CD45RO.avg.nls.reg)
+
+print(CD45RA.ppc.nls)
+print(CD45RO.ppc.nls)
+print(CD45RA.avg.nls)
+print(CD45RO.avg.nls)
+```
+
+Now plot
+
+```{r, warning=F}
+new.interval <- expand.grid(read.count.div.cell = seq(0, 100, 1)*10^8)
+CD45RA.ppc.pred <- predict(CD45RA.ppc.nls.reg, newdata = new.interval)
+CD45RO.ppc.pred <- predict(CD45RO.ppc.nls.reg, newdata = new.interval)
+CD45RA.avg.pred <- predict(CD45RA.avg.nls.reg, newdata = new.interval)
+CD45RO.avg.pred <- predict(CD45RO.avg.nls.reg, newdata = new.interval)
+```
+
+We now reformat data to prepare them for plotting.
+
+```{r}
+CD45RA.ppc.pred <- cbind(new.interval, CD45RA.ppc.pred) %>% dplyr::rename('Prediction' = 'CD45RA.ppc.pred')
+CD45RO.ppc.pred <- cbind(new.interval, CD45RO.ppc.pred) %>% dplyr::rename('Prediction' = 'CD45RO.ppc.pred')
+CD45RA.avg.pred <- cbind(new.interval, CD45RA.avg.pred) %>% dplyr::rename('Prediction' = 'CD45RA.avg.pred')
+CD45RO.avg.pred <- cbind(new.interval, CD45RO.avg.pred) %>% dplyr::rename('Prediction' = 'CD45RO.avg.pred')
+```
+
+```{r}
+mm.RA.ppc <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells), col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RA.ppc.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2], yend = CD45RA.ppc.nls$coefficients[1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RA.ppc.nls$coefficients[2,1], y = 0, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('Average number of reads per cell') +
+  ylab('Fraction of cells with CD45RA') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Number of cells showing at least one read of CD45RA depending on\n average number of cells per read') +
+  theme_classic()
+
+mm.RO.ppc <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells), col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  geom_hline(yintercept = CD45RO.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RO.ppc.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  xlab('Average number of reads per cell') +
+  ylab('Fraction of cells with CD45RO') +
+  geom_segment(x = 0, y = CD45RO.ppc.nls$coefficients[1,1]/2, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RO.ppc.nls$coefficients[2,1], y = 0, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +  
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Number of cells showing at least one read of CD45RO depending on\n average number of cells per read') +
+  theme_classic()
+
+mm.RA.avg <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg), col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RA.avg.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RA.avg.nls$coefficients[2,1], y = 0, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('Average number of reads per cell') +
+  ylab('Average normalized expression of CD45RA') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Average normalized CD45RA counts on\n average number of cells per read') +
+  theme_classic()
+
+mm.RO.avg <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg), col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_text(data = data.frame(x=0,y=CD45RO.avg.nls$coefficients[1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
+  geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  geom_segment(x = CD45RO.avg.nls$coefficients[2], y = 0, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dashed", colour = "black") +
+  xlab('Average number of reads per cell') +
+  ylab('Average normalized expression of CD45RO') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('Average normalized CD45RO counts on\n average number of cells per read') +
+  theme_classic()
+
+print(mm.RA.ppc)
+print(mm.RO.ppc)
+print(mm.RA.avg)
+print(mm.RO.avg)
+```
+
+Save files.
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RA_ppc_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.ppc)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RO_ppc_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.ppc)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RA_avg_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.avg)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RO_avg_subs.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.avg)
+dev.off()
+```
+
+Make blank files.
+
+```{r}
+mm.RA.ppc.blank <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.perc.pos.cells), col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +
+  geom_segment(x = CD45RA.ppc.nls$coefficients[2], y = 0, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +
+  xlab('') +
+  ylab('') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+mm.RO.ppc.blank <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.perc.pos.cells), col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  geom_hline(yintercept = CD45RO.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  xlab('') +
+  ylab('') +
+  geom_segment(x = 0, y = CD45RO.ppc.nls$coefficients[1,1]/2, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +
+  geom_segment(x = CD45RO.ppc.nls$coefficients[2,1], y = 0, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +  
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.ppc.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+mm.RA.avg.blank <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RA.avg), col = CD45RA.IDAO.col) +
+  geom_line(col = CD45RA.IDAO.col) +
+  geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +
+  geom_segment(x = CD45RA.avg.nls$coefficients[2,1], y = 0, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +
+  xlab('') +
+  ylab('') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RA.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+mm.RO.avg.blank <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Prediction)) +
+  geom_point(data = subset.stats, aes(x = read.count.div.cell, y = CD45RO.avg), col = CD45RO.IDAO.col) +
+  geom_line(col = CD45RO.IDAO.col) +
+  geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
+  geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +
+  geom_segment(x = CD45RO.avg.nls$coefficients[2,1], y = 0, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
+               linetype = "dotted", colour = "black") +
+  xlab('') +
+  ylab('') +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.avg.nls$coefficients[1,1]*1.1)) +
+  ggtitle('') +
+  theme_classic() +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+Save blank files.
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RA_ppc_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.ppc.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RO_ppc_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.ppc.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RA_avg_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RA.avg.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_scatter_RO_avg_subs_blank.tiff', width = 6.5, height = 5, units = 'in', res = 200)
+print(mm.RO.avg.blank)
+dev.off()
+```
+
+Finally we generate figures with CD45RA and CD45RO as well as Dimensional plot for Pool 1 only, both full and blank versions.
+
+DimPlot:
+
+```{r}
+dim.plot.1 <- DimPlot(pool.1, label = T) + 
+  ggtitle('PBMC (PRJEB40376) - Pool.1 - Clustering') + 
+  scale_x_continuous(breaks=c(-10, 0, 5)) +
+  scale_y_continuous(breaks=c(-5, 0, 5)) +
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=6))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.spacing.x = unit(1, 'cm'),
+        legend.spacing.y = unit(0.3, 'cm'))
+print(dim.plot.1) 
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_DimPlot_Pool_1.tiff', width = 8.5, height = 6, units = 'in', res = 200)
+print(dim.plot.1)
+dev.off()
+```
+
+```{r}
+dim.plot.1.blank <- DimPlot(pool.integrated) + 
+  ggtitle('') + xlab('') + ylab('') +
+  scale_x_continuous(breaks=c(-10, 0, 5)) +
+  scale_y_continuous(breaks=c(-5, 0, 5)) +
+  guides(color = guide_legend(byrow = TRUE,
+                              override.aes = list(size=6))) +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank(),
+        legend.spacing.y = unit(0.3, 'cm'),
+        legend.spacing.x = unit(1, 'cm'))
+```
+
+```{r}
+tiff('Figure_7/PRJEB40376_DimPlot_Pool_1_blank.tiff', width = 8, height = 6, units = 'in', res = 200)
+print(dim.plot.1.blank)
+dev.off()
+```

@@ -1093,7 +1093,7 @@ scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
 
 scatterplot.lin.RA.RO.IDEIS.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.PTPRC, y = average.CD45RO.PTPRC, label = clusters)) +
   geom_point(color = CD45RA.CD45RO.IDEIS.col, size = 4) +
-  xlab('\n') + ylab('\n') +
+  xlab('') + ylab('\n') +
   scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
   scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
   geom_abline(slope = lm1.CD45RA.CD45RO$coefficients[2], intercept = lm1.CD45RA.CD45RO$coefficients[1], col = CD45RA.CD45RO.IDEIS.col) + 
@@ -1308,9 +1308,6 @@ scatterplot.lin.RA.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = aver
         legend.title=element_blank(),
         legend.text=element_blank())
 
-print(scatterplot.lin.RA.bench.blank)
-
-
 scatterplot.lin.RO.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RO.CD45er, y = average.CD45RO.PTPRC, label = clusters)) +
   geom_point(color = CD45RO.IDAO.col, size = 4) +
   xlab('\n') + ylab('\n') +
@@ -1323,8 +1320,6 @@ scatterplot.lin.RO.bench.blank <- ggplot(data = Ptprc.assay.counts, aes(x = aver
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank())
-
-print(scatterplot.lin.RO.bench.blank)
 ```
 
 ```{r}
@@ -1422,14 +1417,6 @@ ggplot(reg.data.RO %>% dplyr::filter(percent%%10 == 0) %>% dplyr::mutate(percent
  
 ```
 
-# Extrapolation of values for number of required reads.
-
-Now we will use fit of square root function and extrapolation of limits. Table with required data is already computed.
-
-```{r}
-print(subset.stats)
-```
-
 # Fitting Two-parameter Relative model
 
 We now try to fit model Y = a*X/(X+b). This model was chosen because all values here should exhibit asymptotic behavior and this model has shown behavior than regular asymptotic regression model. We use nls package for this purpose. First show data to plot again.
@@ -1485,9 +1472,9 @@ mm.RA.ppc <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Prediction
   geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_text(data = data.frame(x=0,y=CD45RA.ppc.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
   geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2], yend = CD45RA.ppc.nls$coefficients[1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RA.ppc.nls$coefficients[2,1], y = 0, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   xlab('Average number of reads per cell') +
   ylab('Fraction of cells with CD45RA') +
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
@@ -1503,9 +1490,9 @@ mm.RO.ppc <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Prediction
   xlab('Average number of reads per cell') +
   ylab('Fraction of cells with CD45RO') +
   geom_segment(x = 0, y = CD45RO.ppc.nls$coefficients[1,1]/2, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RO.ppc.nls$coefficients[2,1], y = 0, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +  
+               linetype = "dotted", colour = "black") +  
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.ppc.nls$coefficients[1,1]*1.1)) +
   ggtitle('Number of cells showing at least one read of CD45RO depending on\n average number of cells per read') +
@@ -1517,9 +1504,9 @@ mm.RA.avg <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Prediction
   geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_text(data = data.frame(x=0,y=CD45RA.avg.nls$coefficients[1,1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
   geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RA.avg.nls$coefficients[2,1], y = 0, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   xlab('Average number of reads per cell') +
   ylab('Average normalized expression of CD45RA') +
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
@@ -1533,9 +1520,9 @@ mm.RO.avg <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Prediction
   geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_text(data = data.frame(x=0,y=CD45RO.avg.nls$coefficients[1]), aes(x, y), label = 'Maximum theoretical limit', vjust=1.2, hjust = 0) +
   geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RO.avg.nls$coefficients[2], y = 0, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   xlab('Average number of reads per cell') +
   ylab('Average normalized expression of CD45RO') +
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
@@ -1583,9 +1570,9 @@ mm.RA.ppc.blank <- ggplot(CD45RA.ppc.pred, aes(x = read.count.div.cell, y = Pred
   geom_line(col = CD45RA.IDAO.col) +
   geom_hline(yintercept = CD45RA.ppc.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_segment(x = 0, y = CD45RA.ppc.nls$coefficients[1,1]/2, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RA.ppc.nls$coefficients[2], y = 0, xend = CD45RA.ppc.nls$coefficients[2,1], yend = CD45RA.ppc.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   xlab('') +
   ylab('') +
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
@@ -1604,9 +1591,9 @@ mm.RO.ppc.blank <- ggplot(CD45RO.ppc.pred, aes(x = read.count.div.cell, y = Pred
   xlab('') +
   ylab('') +
   geom_segment(x = 0, y = CD45RO.ppc.nls$coefficients[1,1]/2, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RO.ppc.nls$coefficients[2,1], y = 0, xend = CD45RO.ppc.nls$coefficients[2,1], yend = CD45RO.ppc.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +  
+               linetype = "dotted", colour = "black") +  
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
   scale_y_continuous(expand = c(0, 0), limits = c(0, CD45RO.ppc.nls$coefficients[1,1]*1.1)) +
   ggtitle('') +
@@ -1621,9 +1608,9 @@ mm.RA.avg.blank <- ggplot(CD45RA.avg.pred, aes(x = read.count.div.cell, y = Pred
   geom_line(col = CD45RA.IDAO.col) +
   geom_hline(yintercept = CD45RA.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_segment(x = 0, y = CD45RA.avg.nls$coefficients[1,1]/2, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RA.avg.nls$coefficients[2,1], y = 0, xend = CD45RA.avg.nls$coefficients[2,1], yend = CD45RA.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   xlab('') +
   ylab('') +
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +
@@ -1640,9 +1627,9 @@ mm.RO.avg.blank <- ggplot(CD45RO.avg.pred, aes(x = read.count.div.cell, y = Pred
   geom_line(col = CD45RO.IDAO.col) +
   geom_hline(yintercept = CD45RO.avg.nls$coefficients[1,1], linetype = 'dashed', size = 2) +
   geom_segment(x = 0, y = CD45RO.avg.nls$coefficients[1,1]/2, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   geom_segment(x = CD45RO.avg.nls$coefficients[2,1], y = 0, xend = CD45RO.avg.nls$coefficients[2,1], yend = CD45RO.avg.nls$coefficients[1,1]/2, 
-               linetype = "dashed", colour = "black") +
+               linetype = "dotted", colour = "black") +
   xlab('') +
   ylab('') +
   scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) +

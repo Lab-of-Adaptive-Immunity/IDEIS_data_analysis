@@ -34,7 +34,7 @@ if __name__ == "__main__":
       # now run IDEIS
       result_dir = os.path.join(target_path_complete, "%s_subset_%d"%(source_exp, perc))
       whitelist_path = os.path.join(whitelists, 'Whitelist_%s.csv'%source_exp)
-      print('python IdAO_main.py Homo-Sapiens %s %s -g Homo-Sapiens --whitelist %s'%(subsampled_file, result_dir, whitelist_path))
+      print('python IDEIS_main.py Homo-Sapiens %s %s -g Homo-Sapiens --whitelist %s'%(subsampled_file, result_dir, whitelist_path))
       os.system('python %s Homo-Sapiens %s %s -g Homo-Sapiens --whitelist %s'%(IDEIS_main, subsampled_file, result_dir, whitelist_path))
       
       auto_mat_path = os.path.join(result_dir, 'Results' , 'Iso_Counts', 'raw_matrix.rds')

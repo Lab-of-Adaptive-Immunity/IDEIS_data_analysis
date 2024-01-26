@@ -252,9 +252,9 @@ wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448074/6-RNA_pooled_and_mer
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448081/7-RNA_pooled_and_merged_S1_L001_R1_001.fastq.gz
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448081/7-RNA_pooled_and_merged_S1_L001_R2_001.fastq.gz
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448086/8-RNA_pooled_and_merged_S1_L001_R1_001.fastq.gz
-wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448086/8-RNA_pooled_and_merged_S1_L001_R1_001.fastq.gz
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448086/8-RNA_pooled_and_merged_S1_L001_R2_001.fastq.gz
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448089/9-RNA_pooled_and_merged_S1_L001_R1_001.fastq.gz
-wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448089/9-RNA_pooled_and_merged_S1_L001_R1_001.fastq.gz 
+wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448089/9-RNA_pooled_and_merged_S1_L001_R2_001.fastq.gz 
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448066/10-RNA_pooled_and_merged_S1_L001_R1_001.fastq.gz
 wget -nc ftp://ftp.sra.ebi.ac.uk/vol1/run/ERR744/ERR7448066/10-RNA_pooled_and_merged_S1_L001_R2_001.fastq.gz
 

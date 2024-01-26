@@ -4,7 +4,7 @@ Link to paper:
 
 ## Before starting
 
-Chceck that you have RStudio with R 4.2.1 installed along with required packages (mainly Seurat 4.1.1) and python 3.8.10. The software samtools is also required. IDEIS itself requires salmon.  
+Chceck that you have RStudio with R 4.2.1 installed along with required packages (mainly Seurat 4.1.1) and python 3.8.10. The software samtools of version at least 1.14 is also required. IDEIS itself requires Salmon Alevin of version .  
 
 ## Usage
 
@@ -60,29 +60,38 @@ python Run_Cellranger.py
 
 8.) Perform preparations of data with GSE187515_preparation.Rmd, GSE212998_preparation.Rmd, GSE155006_preparation.Rmd and PRJEB40376_preparation.Rmd. This is optimally done in RStudio, using 'Run All' option from 'Run' menu of RStudio. 
 
-9.) Run IDEIS using Run_IDEIS.sh. Warning: In case of PRJEB40376 the BAM files are split by length beforehand, which takes a long time.
-
-```
-bash Run_IDEIS.sh
-```
-
-10.) Subset created BAM files to barcodes in whitelists (which were created in previous step), then Run benchmarks.
+9.) Subset created BAM files to barcodes in whitelists (which were created in previous step), then Run benchmarks.
 
 ```
 cd Benchmarks
-python subset_bams_by_whitelist.py
+python subset_bams_by_whitelists.py
 python benchmark_CD45er.py
 python benchmark_IDEIS.py
 cd ..
 ```
 
-11.) Create subsampled data of GSE187515 with only certain percentages used, then use next step to count reads that are mapping to used genome for each subsampling percentage.  Warning: This step can take a lot of time.
+10.) Subset Pool 1 file from PRJEB40376 to cells in whitelist only for the subsampling.
+
+```
+cd PRJEB40376
+python subset_bams_by_whitelists_PRJEB40376.py
+cd ..
+```
+
+11.) Run IDEIS using Run_IDEIS.sh. Warning: In case of PRJEB40376 the BAM files are split by length beforehand, which takes a long time.
+
+```
+bash Run_IDEIS.sh
+```
+
+12.) Create subsampled data of GSE187515 and PRJE40376 with only certain percentages used, run IDEIS on them, then use next step to count reads that are mapping to used genome for each subsampling percentage.  Warning: This step can take a lot of time.
 
 ```
 python GSE187515_subset.py
+python PRJEB40376_subset.py
 python count_mapped_reads.py
 ```
 
-12.) Perform analyses of data with GSE187515_analysis.Rmd, GSE212998_analysis.Rmd, GSE155006_analysis.Rmd and PRJEB40376_analysis.Rmd. The best way is to run these files in RStudio with 'Run All' option.
+13.) Perform analyses of data with GSE187515_analysis.Rmd, GSE212998_analysis.Rmd, GSE155006_analysis.Rmd and PRJEB40376_analysis.Rmd. The best way is to run these files in RStudio with 'Run All' option.
 
-13.) Run Benchmarks.Rmd. Again, the best way is to use RStudio and 'Run All' option.
+14.) Run Benchmarks.Rmd. Again, the best way is to use RStudio and 'Run All' option.

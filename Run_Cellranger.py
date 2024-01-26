@@ -9,8 +9,8 @@ if __name__ == '__main__':
   # Fill in configuration parameters
   
   ncores = 32
-  path_to_cellranger_3 = '/mnt/scratch/beluga/michalik/cellranger3.0.2/cellranger-3.0.2/cellranger-cs/3.0.2/bin/cellranger' # location of cellranger3.0.2
-  path_to_cellranger_5 = '/mnt/scratch/beluga/michalik/cellranger5.0.1/cellranger-5.0.1/cellranger' # location of cellranger5.0.1
+  path_to_cellranger_3 = '' # location of cellranger3.0.2
+  path_to_cellranger_5 = '' # location of cellranger5.0.1
   path_to_reference_3 = 'Reference3'  # where reference for Cell Ranger 3.0.2 will be downloaded
   path_to_ref_data_5 = 'Reference5'   # where files for references for Cell Ranger 5.0.1 will be downloaded; here alsoCell Ranger reference will be created
   

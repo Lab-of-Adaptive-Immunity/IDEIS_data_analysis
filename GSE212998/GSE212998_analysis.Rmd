@@ -920,7 +920,7 @@ scatterplot.lin.RO.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD
 
 scatterplot.lin.RA.RO.IDEIS.blank <- ggplot(data = Ptprc.assay.counts, aes(x = average.CD45RA.PTPRC, y = average.CD45RO.PTPRC, label = clusters)) +
   geom_point(color = CD45RA.CD45RO.IDEIS.col, size = 4) +
-  xlab('\n') + ylab('\n') +
+  xlab('') + ylab('\n') +
   scale_x_continuous(limits = c(0, NA), breaks=c(0, 0.5)) +
   scale_y_continuous(limits = c(0, NA), breaks=c(0, 0.25)) +
   geom_abline(slope = lm1.CD45RA.CD45RO$coefficients[2], intercept = lm1.CD45RA.CD45RO$coefficients[1], col = CD45RA.CD45RO.IDEIS.col) + 

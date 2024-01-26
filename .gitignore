@@ -36,3 +36,4 @@ PRJEB40376/*.csv
 !PRJEB40376/FeatureReference.csv
 !PRJEB40376/PRJEB40376_preparation.Rmd
 !PRJEB40376/PRJEB40376_analysis.Rmd
+!PRJEB40376/subset_bams_by_whitelist_PRJEB40376.py

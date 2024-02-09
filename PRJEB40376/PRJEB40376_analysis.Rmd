@@ -82,8 +82,8 @@ Import Ptprc data.
 
 ```{r}
 for(i in 1:length(seu.pool.list)){
-  ptprc.pool.minus <- readRDS(paste0('Ptprc/Ptprc_', pool.names[i], '_100minus_raw_matrix.rds'))
-  ptprc.pool.plus <- readRDS(paste0('Ptprc/Ptprc_', pool.names[i], '_100plus_raw_matrix.rds'))
+  ptprc.pool.minus <- readRDS(paste0('Ptprc/Ptprc_', names(seu.pool.list)[i], '_100minus_raw_matrix.rds'))
+  ptprc.pool.plus <- readRDS(paste0('Ptprc/Ptprc_', names(seu.pool.list)[i], '_100plus_raw_matrix.rds'))
   ptprc.pool <- ptprc.pool.minus + ptprc.pool.plus 
   seu.pool.list[[i]][['Ptprc']] <- CreateAssayObject(ptprc.pool)
 }
@@ -124,7 +124,7 @@ for(i in 1:length(seu.pool.list)){
 
 ```{r}
 for(i in 1:length(seu.pool.list)){
-  print(DimPlot(seu.pool.list[[i]], label = T) + ggtitle(pool.names[i]))
+  print(DimPlot(seu.pool.list[[i]], label = T) + ggtitle(names(seu.pool.list)[i]))
   print(VlnPlot(seu.pool.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size = 0))
 }
 ```
@@ -287,16 +287,12 @@ MonacoData <- MonacoImmuneData()
 ```{r}
 pool.integrated.Monaco <- SingleR(pool.integrated.counts, MonacoData, MonacoData$label.main, fine.tune = T)
 pool.integrated$annotation.Monaco <- pool.integrated.Monaco$pruned.labels
-
-pool.integrated.Monaco.fine <- SingleR(pool.integrated.counts, MonacoData, MonacoData$label.fine, fine.tune = T)
-pool.integrated$annotation.Monaco.fine <- pool.integrated.Monaco.fine$pruned.labels
 ```
 
 We now show generated annotations on UMAP plot.
 
 ```{r, fig.width = 10}
 DimPlot(pool.integrated, group.by = 'annotation.Monaco') + ggtitle('Annotation Monaco')
-DimPlot(pool.integrated, group.by = 'annotation.Monaco.fine') + ggtitle('Annotation Monaco (fine)')
 ```
 
 Save (update) integrated data with annotation.
@@ -541,7 +537,7 @@ Now compute PTPRC-RA and PTPRC-RO coverages.
 read.counts <- read.csv('counted_bam.txt', sep = '\t')
 
 subset.stats <- data.frame(percentages = seq(25,100,25),
-                           read.count.div.cell = read.counts$read.count,
+                           read.count.div.cell = read.counts$read.count/5862,
                            CD45RA.perc.pos.cells = rep(0,4),
                            CD45RO.perc.pos.cells = rep(0,4),
                            CD45RA.avg = rep(0,4),
@@ -576,10 +572,10 @@ subset.stats[,4] <- subset.stats[,4]/ncol(counts.raw)
 Now use fit for all variables of interest to model Y = a*X/(X+b).
 
 ```{r, warning = F}
-CD45RA.ppc.nls.reg <- nls(CD45RA.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
-CD45RO.ppc.nls.reg <- nls(CD45RO.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
-CD45RA.avg.nls.reg <- nls(CD45RA.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
-CD45RO.avg.nls.reg <- nls(CD45RO.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=10000000))
+CD45RA.ppc.nls.reg <- nls(CD45RA.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=1000000))
+CD45RO.ppc.nls.reg <- nls(CD45RO.perc.pos.cells ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=1000000))
+CD45RA.avg.nls.reg <- nls(CD45RA.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=1000000))
+CD45RO.avg.nls.reg <- nls(CD45RO.avg ~ a*read.count.div.cell/(b + read.count.div.cell), data = subset.stats, start = list(a=0.01, b=1000000))
 
 CD45RA.ppc.nls <- summary(CD45RA.ppc.nls.reg)
 CD45RO.ppc.nls <- summary(CD45RO.ppc.nls.reg)
@@ -592,10 +588,10 @@ print(CD45RA.avg.nls)
 print(CD45RO.avg.nls)
 ```
 
-Now plot
+Now plot.
 
 ```{r, warning=F}
-new.interval <- expand.grid(read.count.div.cell = seq(0, 100, 1)*10^8)
+new.interval <- expand.grid(read.count.div.cell = seq(0, 100, 1)*10^4)
 CD45RA.ppc.pred <- predict(CD45RA.ppc.nls.reg, newdata = new.interval)
 CD45RO.ppc.pred <- predict(CD45RO.ppc.nls.reg, newdata = new.interval)
 CD45RA.avg.pred <- predict(CD45RA.avg.nls.reg, newdata = new.interval)
@@ -827,7 +823,7 @@ dim.plot.1 <- DimPlot(pool.1, label = T) +
                               override.aes = list(size=6))) +
   theme(plot.title = element_text(hjust = 0.5),
         legend.spacing.x = unit(1, 'cm'),
-        legend.spacing.y = unit(0.3, 'cm'))
+        legend.spacing.y = unit(0.4, 'cm'))
 print(dim.plot.1) 
 ```
 
@@ -838,7 +834,7 @@ dev.off()
 ```
 
 ```{r}
-dim.plot.1.blank <- DimPlot(pool.integrated) + 
+dim.plot.1.blank <- DimPlot(pool.1) + 
   ggtitle('') + xlab('') + ylab('') +
   scale_x_continuous(breaks=c(-10, 0, 5)) +
   scale_y_continuous(breaks=c(-5, 0, 5)) +
@@ -849,7 +845,7 @@ dim.plot.1.blank <- DimPlot(pool.integrated) +
         axis.text.y=element_blank(),
         legend.title=element_blank(),
         legend.text=element_blank(),
-        legend.spacing.y = unit(0.3, 'cm'),
+        legend.spacing.y = unit(0.6, 'cm'),
         legend.spacing.x = unit(1, 'cm'))
 ```
 

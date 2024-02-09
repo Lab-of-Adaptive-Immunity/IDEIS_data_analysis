@@ -557,39 +557,6 @@ scatterplot.lin.RA.RO.IDEIS <- ggplot(data = Ptprc.assay.counts, aes(x = average
 print(scatterplot.lin.RA.RO.IDEIS)
 ```
 
-# Annotation
-
-We use SingleR package for annotation.
-
-```{r}
-HIV.integ.data.counts <- GetAssayData(HIV.integ.data, assay = 'RNA', slot = 'data')
-```
-
-```{r}
-MonacoData <- MonacoImmuneData() 
-```
-
-```{r}
-HIV.integ.data.Immgen <- SingleR(HIV.integ.data.counts, MonacoData, MonacoData$label.main, fine.tune = T)
-HIV.integ.data$annotation.ImmGen <- HIV.integ.data.Immgen$pruned.labels
-
-HIV.integ.data.Immgen.fine <- SingleR(HIV.integ.data.counts, MonacoData, MonacoData$label.fine, fine.tune = T)
-HIV.integ.data$annotation.ImmGen.fine <- HIV.integ.data.Immgen.fine$pruned.labels
-```
-
-We now show generated annotations on UMAP plot.
-
-```{r, fig.width = 10}
-DimPlot(HIV.integ.data, group.by = 'annotation.ImmGen') + ggtitle('Annotation Immgen')
-DimPlot(HIV.integ.data, group.by = 'annotation.ImmGen.fine') + ggtitle('Annotation Immgen (fine)')
-```
-
-Save (update) integrated data set with annotation.
-
-```{r}
-saveRDS(HIV.integ.data, 'Datasets/GSE187515_integrated_data.rds')
-```
-
 # Generating figures
 
 Generate final figures. For each figure we generate Desired final plot and equivalent without text. 

@@ -341,46 +341,6 @@ Save updated integrated data set.
 saveRDS(mm.mog.integ.data, 'Datasets/GSE155006_integrated_data.rds')
 ```
 
-# Annotation
-
-We use SingleR package for annotation.
-
-```{r}
-mm.mog.integ.data.data <- GetAssayData(mm.mog.integ.data, assay = 'RNA', slot = 'data')
-```
-
-```{r}
-ImmGenData <- ImmGenData() 
-```
-
-```{r}
-mm.mog.integ.data.Immgen <- SingleR(mm.mog.integ.data.data, ImmGenData, ImmGenData$label.main, fine.tune = T)
-mm.mog.integ.data$annotation.ImmGen <- mm.mog.integ.data.Immgen$pruned.labels
-
-mm.mog.integ.data.Immgen.fine <- SingleR(mm.mog.integ.data.data, ImmGenData, ImmGenData$label.fine, fine.tune = F)
-mm.mog.integ.data$annotation.ImmGen.fine <- mm.mog.integ.data.Immgen.fine$labels
-```
-
-From the second annotation we remove all cell types where count is lower than 100.
-
-```{r}
-mm.mog.integ.data$annotation.ImmGen.filt <- mm.mog.integ.data$annotation.ImmGen.fine
-mm.mog.integ.data$annotation.ImmGen.filt[mm.mog.integ.data$annotation.ImmGen.filt %in% names(table(mm.mog.integ.data$annotation.ImmGen.filt)[table(mm.mog.integ.data$annotation.ImmGen.filt) < 200])] <- 'Other'
-```
-
-We now show generated annotations on UMAP plot.
-
-```{r, fig.width = 12}
-DimPlot(mm.mog.integ.data, group.by = 'annotation.ImmGen', label = T) + ggtitle('Annotation Immgen')
-DimPlot(mm.mog.integ.data, group.by = 'annotation.ImmGen.filt', label = T) + ggtitle('Annotation Immgen (filt)')
-```
-
-Update data set with annotation.
-
-```{r}
-saveRDS(mm.mog.integ.data, 'Datasets/GSE155006_integrated_data.rds')
-```
-
 # Generating figures
 
 Generate final figures. For each figure we generate Desired final plot and equivalent without text. 

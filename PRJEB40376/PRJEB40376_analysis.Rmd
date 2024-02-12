@@ -289,7 +289,7 @@ pool.integrated.Monaco <- SingleR(pool.integrated.counts, MonacoData, MonacoData
 pool.integrated$annotation.Monaco <- pool.integrated.Monaco$pruned.labels
 ```
 
-We now show generated annotations on UMAP plot.
+We now show generated annotations on UMAP plot. This is not used in final paper, it's just for convenience and for orientation but annotation in paper was done manually.
 
 ```{r, fig.width = 10}
 DimPlot(pool.integrated, group.by = 'annotation.Monaco') + ggtitle('Annotation Monaco')

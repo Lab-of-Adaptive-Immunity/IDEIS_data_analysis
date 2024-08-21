@@ -1,0 +1,462 @@
+---
+title: "Revisions regressions"
+author: "Juraj Michalik"
+date: "2024-08-13"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+This file features figures for revisions for paper of Michalik et al. Here we compute regressions on pseudobulk data generated from clusters of original data sets.
+
+Note that file 'Figures_for_revision_tile_vln_plots.Rmd' must be run beforehand.
+
+# Initialization
+
+Load packages.
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(ggrepel)
+library(STACAS)
+library(Matrix)
+library(Matrix.utils)
+library(scales)
+library(stringr)
+
+# negation of %in% 
+`%nin%` = Negate(`%in%`)
+```
+
+```{r}
+CD45RA.IDAO.col <- 'firebrick3'
+CD45RO.IDAO.col <- 'darkorchid2'
+CD45RA.CD45RO.IDEIS.col <- 'forestgreen'
+```
+
+Create directory where all new figures will be stored.
+
+```{r}
+dir.create('Figures_Point_by_Point', showWarnings = FALSE)
+```
+
+Load relevant data.
+
+```{r}
+data1 <- readRDS('../GSE187515/Datasets/GSE187515_integrated_data.rds')
+data2 <- readRDS('../GSE212998/Datasets/GSE212998_integrated_data.rds')
+```
+
+Extract data for PTPRC assays and Antibodies for all data set and merge them into single table.
+
+```{r}
+data1.ptprc <- GetAssayData(data1, assay = 'Ptprc', slot = 'counts')
+data1.atb <- GetAssayData(data1, assay = 'Antibodies', slot = 'counts')
+data1.CD45er <- GetAssayData(data1, assay = 'CD45er', slot = 'counts')
+data1.assays <- rbind(data1.ptprc, data1.atb, data1.CD45er) %>% t
+```
+
+```{r}
+data2.ptprc <- GetAssayData(data2, assay = 'Ptprc', slot = 'counts')
+data2.atb <- GetAssayData(data2, assay = 'Antibodies', slot = 'counts')
+data2.CD45er <- GetAssayData(data2, assay = 'CD45er', slot = 'counts')
+data2.assays <- rbind(data2.ptprc, data2.atb, data2.CD45er) %>% t
+```
+
+We generate and plot pseudobulk counts.
+
+```{r}
+clusters <- data1$seurat_clusters
+data1.pseudo <- data1.assays %>% as.data.frame %>% cbind(.,clusters) %>% 
+  dplyr::group_by(clusters) %>% 
+  dplyr::summarise(PTPRC.RA = sum(`PTPRC-RA`), 
+                   PTPRC.RO = sum(`PTPRC-RO`), 
+                   CD45RA = sum(CD45RA),
+                   CD45RO = sum(CD45RO),
+                   erCD45RA = sum(erCD45RA),
+                   erCD45RO = sum(erCD45RO))
+```
+
+Make linear regressions.
+
+```{r}
+reg1.dat1 <- lm(formula = 'PTPRC.RA ~ CD45RA', data = data1.pseudo)
+reg2.dat1 <- lm(formula = 'PTPRC.RO ~ CD45RO', data = data1.pseudo)
+reg3.dat1 <- lm(formula = 'PTPRC.RA ~ erCD45RA', data = data1.pseudo)
+reg4.dat1 <- lm(formula = 'PTPRC.RO ~ erCD45RO', data = data1.pseudo)
+```
+
+Get correlation coeeficients.
+
+```{r}
+r.CD45RA.dat1 <- cor(data1.pseudo$CD45RA, data1.pseudo$PTPRC.RA, method = 'pearson')
+r.CD45RO.dat1 <- cor(data1.pseudo$CD45RO, data1.pseudo$PTPRC.RO, method = 'pearson')
+r.CD45RA.bench.dat1 <- cor(data1.pseudo$erCD45RA, data1.pseudo$PTPRC.RA, method = 'pearson')
+r.CD45RO.bench.dat1 <- cor(data1.pseudo$erCD45RO, data1.pseudo$PTPRC.RO, method = 'pearson')
+```
+
+Plot pseudobulk data.
+
+```{r}
+scatterplot.lin.RA.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = CD45RA, y= PTPRC.RA, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 100) +
+  geom_point(color = CD45RA.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg1.dat1$coefficients[2], intercept = reg1.dat1$coefficients[1], col = CD45RA.IDAO.col) + 
+  annotate('text',  
+           col = CD45RA.IDAO.col, x = 1, y = max(data1.pseudo$PTPRC.RA), 
+           label = paste0('y = ', round(reg1.dat1$coefficients[2], 2), ' + ',  round(reg1.dat1$coefficients[1], 2), '\nr = ', round(r.CD45RA.dat1,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between Antibody and IDEIS counts \n of CD45RA isoform for GSE187515 cluster pseudobulk data') +
+  xlab('CITE-seq counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RA.dat1)
+```
+
+```{r}
+scatterplot.lin.RO.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = CD45RO, y= PTPRC.RO, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 100) +
+  geom_point(color = CD45RO.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg2.dat1$coefficients[2], intercept = reg2.dat1$coefficients[1], col = CD45RO.IDAO.col) + 
+  annotate('text',  
+           col = CD45RO.IDAO.col, x = 1, y = max(data1.pseudo$PTPRC.RO), 
+           label = paste0('y = ', round(reg2.dat1$coefficients[2], 2), ' + ',  round(reg2.dat1$coefficients[1], 2), '\nr = ', round(r.CD45RO.dat1,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between Antibody and IDEIS counts \n of CD45RO isoform for GSE187515 cluster pseudobulk data') +
+  xlab('CITE-seq counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RO.dat1)
+```
+
+```{r}
+scatterplot.lin.RA.bench.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = erCD45RA, y= PTPRC.RA, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 100) +
+  geom_point(color = CD45RA.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg3.dat1$coefficients[2], intercept = reg3.dat1$coefficients[1], col = CD45RA.IDAO.col) + 
+  annotate('text',  
+           col = CD45RA.IDAO.col, x = 1, y = max(data1.pseudo$PTPRC.RA), 
+           label = paste0('y = ', round(reg3.dat1$coefficients[2], 2), ' + ',  round(reg3.dat1$coefficients[1], 2), '\nr = ', round(r.CD45RA.bench.dat1,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between CD45er and IDEIS counts \n of CD45RA isoform for GSE187515 cluster pseudobulk data') +
+  xlab('CD45er counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RA.bench.dat1)
+```
+
+```{r}
+scatterplot.lin.RO.bench.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = erCD45RO, y= PTPRC.RO, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 100) +
+  geom_point(color = CD45RO.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg4.dat1$coefficients[2], intercept = reg4.dat1$coefficients[1], col = CD45RO.IDAO.col) + 
+  annotate('text',  
+           col = CD45RO.IDAO.col, x = 1, y = max(data1.pseudo$PTPRC.RO), 
+           label = paste0('y = ', round(reg4.dat1$coefficients[2], 2), ' + ',  round(reg4.dat1$coefficients[1], 2), '\nr = ', round(r.CD45RO.bench.dat1,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between CD45er and IDEIS counts \n of CD45RO isoform for GSE187515 cluster pseudobulk data') +
+  xlab('CD45er counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RO.bench.dat1)
+```
+# Data sets 2
+
+We generate and plot pseudobulk counts.
+
+```{r}
+clusters <- data2$seurat_clusters
+data2.pseudo <- data2.assays %>% as.data.frame %>% cbind(.,clusters) %>% 
+  dplyr::group_by(clusters) %>% 
+  dplyr::summarise(PTPRC.RA = sum(`PTPRC-RA`), 
+                   PTPRC.RO = sum(`PTPRC-RO`), 
+                   CD45RA = sum(CD45RA),
+                   CD45RO = sum(CD45RO),
+                   erCD45RA = sum(erCD45RA),
+                   erCD45RO = sum(erCD45RO))
+```
+
+Make linear regressions.
+
+```{r}
+reg1.dat2 <- lm(formula = 'PTPRC.RA ~ CD45RA', data = data2.pseudo)
+reg2.dat2 <- lm(formula = 'PTPRC.RO ~ CD45RO', data = data2.pseudo)
+reg3.dat2 <- lm(formula = 'PTPRC.RA ~ erCD45RA', data = data2.pseudo)
+reg4.dat2 <- lm(formula = 'PTPRC.RO ~ erCD45RO', data = data2.pseudo)
+```
+
+get correlation coeeficients.
+
+```{r}
+r.CD45RA.dat2 <- cor(data2.pseudo$CD45RA, data2.pseudo$PTPRC.RA, method = 'pearson')
+r.CD45RO.dat2 <- cor(data2.pseudo$CD45RO, data2.pseudo$PTPRC.RO, method = 'pearson')
+r.CD45RA.bench.dat2 <- cor(data2.pseudo$erCD45RA, data2.pseudo$PTPRC.RA, method = 'pearson')
+r.CD45RO.bench.dat2 <- cor(data2.pseudo$erCD45RO, data2.pseudo$PTPRC.RO, method = 'pearson')
+```
+
+Plot pseudobulk data.
+
+```{r}
+scatterplot.lin.RA.dat2 <- ggplot(data2.pseudo %>% as.data.frame, aes(x = CD45RA, y= PTPRC.RA, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 500) +
+  geom_point(color = CD45RA.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg1.dat2$coefficients[2], intercept = reg1.dat2$coefficients[1], col = CD45RA.IDAO.col) + 
+  annotate('text',  
+           col = CD45RA.IDAO.col, x = 1, y = max(data2.pseudo$PTPRC.RA), 
+           label = paste0('y = ', round(reg1.dat2$coefficients[2], 2), ' + ',  round(reg1.dat2$coefficients[1], 2), '\nr = ', round(r.CD45RA.dat2,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between Antibody and IDEIS counts \n of CD45RA isoform for GSE212998 cluster pseudobulk data') +
+  xlab('CITE-seq counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RA.dat2)
+```
+
+```{r}
+scatterplot.lin.RO.dat2 <- ggplot(data2.pseudo %>% as.data.frame, aes(x = CD45RO, y= PTPRC.RO, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 500) +
+  geom_point(color = CD45RO.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg2.dat2$coefficients[2], intercept = reg2.dat2$coefficients[1], col = CD45RO.IDAO.col) + 
+  annotate('text',  
+           col = CD45RO.IDAO.col, x = 1, y = max(data2.pseudo$PTPRC.RO), 
+           label = paste0('y = ', round(reg2.dat2$coefficients[2], 2), ' + ',  round(reg2.dat2$coefficients[1], 2), '\nr = ', round(r.CD45RO.dat2,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between Antibody and IDEIS counts \n of CD45RO isoform for GSE212998 cluster pseudobulk data') +
+  xlab('CITE-seq counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RO.dat2)
+```
+
+```{r}
+scatterplot.lin.RA.bench.dat2 <- ggplot(data2.pseudo %>% as.data.frame, aes(x = erCD45RA, y= PTPRC.RA, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 500) +
+  geom_point(color = CD45RA.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg3.dat2$coefficients[2], intercept = reg3.dat2$coefficients[1], col = CD45RA.IDAO.col) + 
+  annotate('text',  
+           col = CD45RA.IDAO.col, x = 1, y = max(data2.pseudo$PTPRC.RA), 
+           label = paste0('y = ', round(reg3.dat2$coefficients[2], 2), ' + ',  round(reg3.dat2$coefficients[1], 2), '\nr = ', round(r.CD45RA.bench.dat2,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between CD45er and IDEIS counts \n of CD45RA isoform for GSE212998 cluster pseudobulk data') +
+  xlab('CD45er counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RA.bench.dat2)
+```
+
+```{r}
+scatterplot.lin.RO.bench.dat2 <- ggplot(data2.pseudo %>% as.data.frame, aes(x = erCD45RO, y= PTPRC.RO, label = clusters)) + 
+  geom_text_repel(size = 4, max.overlaps = 500) +
+  geom_point(color = CD45RO.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg4.dat2$coefficients[2], intercept = reg4.dat2$coefficients[1], col = CD45RO.IDAO.col) + 
+  annotate('text',  
+           col = CD45RO.IDAO.col, x = 1, y = max(data2.pseudo$PTPRC.RO), 
+           label = paste0('y = ', round(reg4.dat2$coefficients[2], 2), ' + ',  round(reg4.dat2$coefficients[1], 2), '\nr = ', round(r.CD45RO.bench.dat2,2)),
+           hjust = 0) +
+  ggtitle('Correspondence between CD45er and IDEIS counts \n of CD45RO isoform for GSE212998 cluster pseudobulk data') +
+  xlab('CD45er counts') + ylab('IDEIS counts') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+print(scatterplot.lin.RO.bench.dat2)
+```
+
+# Data 1 - Plots for publication
+
+Data for publication - CITE-seq and IDEIS.
+
+```{r}
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RA.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.dat1)
+dev.off()
+
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RO.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.dat1)
+dev.off()
+```
+
+Save PNG for Point by Point.
+
+```{r}
+png('Figures_Point_by_Point/GSE187515_scatter_RA.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.dat1)
+dev.off()
+
+png('Figures_Point_by_Point/GSE187515_scatter_RO.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.dat1)
+dev.off()
+```
+
+Create empty variants.
+
+```{r}
+scatterplot.lin.RA.blank.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = CD45RA, y= PTPRC.RA)) + 
+  geom_point(color = CD45RA.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg1.dat1$coefficients[2], intercept = reg1.dat1$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('') +
+  xlab('') + ylab('') +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+  
+print(scatterplot.lin.RA.blank.dat1)
+```
+
+```{r}
+scatterplot.lin.RO.blank.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = CD45RO, y= PTPRC.RO)) + 
+  geom_point(color = CD45RO.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg2.dat1$coefficients[2], intercept = reg2.dat1$coefficients[1], col = CD45RO.IDAO.col) + 
+  ggtitle('') +
+  xlab('') + ylab('') + 
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+
+print(scatterplot.lin.RO.blank.dat1)
+```
+
+Save.
+
+```{r}
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RA_blank.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.blank.dat1)
+dev.off()
+
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RO_blank.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.blank.dat1)
+dev.off()
+```
+
+Data for publication - CITE-seq and CD45er.
+
+```{r}
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RA_bench.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.bench.dat1)
+dev.off()
+
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RO_bench.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.bench.dat1)
+dev.off()
+```
+
+Save PNG for Point by Point.
+
+```{r}
+png('Figures_Point_by_Point/GSE187515_SupFig1_scatter_RA_bench.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.dat1)
+dev.off()
+
+png('Figures_Point_by_Point/GSE187515_SupFig1_scatter_RO_bench.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.dat1)
+dev.off()
+```
+
+Create empty variants.
+
+```{r}
+scatterplot.lin.RA.bench.blank.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = erCD45RA, y= PTPRC.RA)) + 
+  geom_point(color = CD45RA.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg3.dat1$coefficients[2], intercept = reg3.dat1$coefficients[1], col = CD45RA.IDAO.col) + 
+  ggtitle('') +
+  xlab('') + ylab('') +
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+  
+print(scatterplot.lin.RA.bench.blank.dat1)
+```
+
+```{r}
+scatterplot.lin.RO.bench.blank.dat1 <- ggplot(data1.pseudo %>% as.data.frame, aes(x = erCD45RO, y= PTPRC.RO)) + 
+  geom_point(color = CD45RO.IDAO.col) +
+  theme_classic() +
+  geom_abline(slope = reg4.dat1$coefficients[2], intercept = reg4.dat1$coefficients[1], col = CD45RO.IDAO.col) + 
+  ggtitle('') +
+  xlab('') + ylab('') + 
+  theme(axis.text.x=element_blank(),
+        axis.text.y=element_blank())
+
+print(scatterplot.lin.RO.bench.blank.dat1)
+```
+
+
+Save.
+
+```{r}
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RA_blank.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.blank.dat1)
+dev.off()
+
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RO_blank.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.blank.dat1)
+dev.off()
+
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RA_blank_bench.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.bench.blank.dat1)
+dev.off()
+
+tiff('Figures_auto_revision/Supp_Figure_1/GSE187515_SupFig1_scatter_RO_blank_bench.tiff', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.bench.blank.dat1)
+dev.off()
+```
+
+```{r}
+png('Figures_Point_by_Point/GSE187515_SupFig1_scatter_RA_bench.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.dat1)
+dev.off()
+
+png('Figures_Point_by_Point/GSE187515_SupFig1_scatter_RO_bench.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.dat1)
+dev.off()
+```
+
+# Data 2
+
+```{r}
+png('Figures_Point_by_Point/GSE212998_SupFig1_scatter_RA.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.dat2)
+dev.off()
+
+png('Figures_Point_by_Point/GSE212998_SupFig1_scatter_RO.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.dat2)
+dev.off()
+```
+
+```{r}
+png('Figures_Point_by_Point/GSE212998_SupFig1_scatter_RA_bench.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RA.bench.dat2)
+dev.off()
+
+png('Figures_Point_by_Point/GSE212998_SupFig1_scatter_RO_bench.png', width = 6, height = 6, units = 'in', res = 300)
+print(scatterplot.lin.RO.bench.dat2)
+dev.off()
+```

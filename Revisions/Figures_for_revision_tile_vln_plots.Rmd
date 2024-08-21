@@ -1,0 +1,1251 @@
+---
+title: "IDEIS revisions"
+author: "Juraj Michalik"
+date: "2024-08-01"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+This file features figures for revisions for paper of Michalik et al. Here we generate supplemental Tile Plots and Vln plons to analyse performance of IDEIS compared to other methods on cell-wise basis.
+
+# Initialization
+
+Load packages.
+
+```{r setup, include=FALSE}
+library(spatstat.core)
+library(Matrix)
+library(Seurat)
+library(Signac)
+library(future)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(reshape2)
+library(ggrepel)
+library(scales)
+```
+
+Load colors
+
+```{r}
+CD45RA.IDAO.col <- 'firebrick3'
+CD45RO.IDAO.col <- 'darkorchid2'
+```
+
+Create directory where all new figures will be stored.
+
+```{r}
+dir.create('Figures_auto_revision', showWarnings = FALSE)
+dir.create(file.path('Figures_auto_revision', 'Figure_2'), showWarnings = FALSE)
+dir.create(file.path('Figures_auto_revision', 'Figure_3'), showWarnings = FALSE)
+dir.create(file.path('Figures_auto_revision', 'Figure_5'), showWarnings = FALSE)
+dir.create(file.path('Figures_auto_revision', 'Figure_6'), showWarnings = FALSE)
+dir.create(file.path('Figures_auto_revision', 'Figure_7'), showWarnings = FALSE)
+dir.create(file.path('Figures_auto_revision', 'Supp_Figure_1'), showWarnings = FALSE)
+```
+
+Load needed data.
+
+```{r}
+data1 <- readRDS('../GSE187515/Datasets/GSE187515_integrated_data.rds')
+data2 <- readRDS('../GSE212998/Datasets/GSE212998_integrated_data.rds')
+data3 <- readRDS('../GSE155006/Datasets/GSE155006_integrated_data.rds')
+data4 <- readRDS('../PRJEB40376/Datasets/PRJEB40376_integrated_data.rds')
+```
+
+# Processing
+
+## Data preparation
+
+Extract data for PTPRC assays and Antibodies for all data set and merge them into single table.
+
+```{r}
+data1.ptprc <- GetAssayData(data1, assay = 'Ptprc', slot = 'counts')
+data1.atb <- GetAssayData(data1, assay = 'Antibodies', slot = 'counts')
+data1.CD45er <- GetAssayData(data1, assay = 'CD45er', slot = 'counts')
+data1.assays <- rbind(data1.ptprc, data1.atb, data1.CD45er) %>% t
+```
+
+```{r}
+data2.ptprc <- GetAssayData(data2, assay = 'Ptprc', slot = 'counts')
+data2.atb <- GetAssayData(data2, assay = 'Antibodies', slot = 'counts')
+data2.CD45er <- GetAssayData(data2, assay = 'CD45er', slot = 'counts')
+data2.assays <- rbind(data2.ptprc, data2.atb, data2.CD45er) %>% t
+```
+
+```{r}
+data4.ptprc <- GetAssayData(data4, assay = 'Ptprc', slot = 'counts')
+data4.atb <- GetAssayData(data4, assay = 'Antibodies', slot = 'counts')
+data4.assays <- rbind(data4.ptprc, data4.atb) %>% t
+```
+
+Note that CITE-seq data will be converted to log10 range in all following analyses.
+
+# Pearson's Correlation coefficient
+
+Here we perform Pearson's correlation coefficient test. This will be done for Both CITE-seq - IDEIS and CD45er - IDEIS data for both data sets.
+
+```{r}
+correlation.RA.dat1 <- cor.test(log10(as.data.frame(data1.assays)$CD45RA+1), as.data.frame(data1.assays)$`PTPRC-RA`, method = 'pearson')
+correlation.RO.dat1 <- cor.test(log10(as.data.frame(data1.assays)$CD45RO+1), as.data.frame(data1.assays)$`PTPRC-RO`, method = 'pearson')
+
+correlation.erRA.dat1 <- cor.test(as.data.frame(data1.assays)$erCD45RA, as.data.frame(data1.assays)$`PTPRC-RA`, method = 'pearson')
+correlation.erRO.dat1 <- cor.test(as.data.frame(data1.assays)$erCD45RO, as.data.frame(data1.assays)$`PTPRC-RO`, method = 'pearson')
+
+print(correlation.RA.dat1)
+print(correlation.RO.dat1)
+print(correlation.erRA.dat1)
+print(correlation.erRO.dat1)
+```
+
+```{r}
+correlation.RA.dat2 <- cor.test(log10(as.data.frame(data2.assays)$CD45RA+1), as.data.frame(data2.assays)$`PTPRC-RA`, method = 'pearson')
+correlation.RO.dat2 <- cor.test(log10(as.data.frame(data2.assays)$CD45RO+1), as.data.frame(data2.assays)$`PTPRC-RO`, method = 'pearson')
+
+correlation.erRA.dat2 <- cor.test(as.data.frame(data2.assays)$erCD45RA, as.data.frame(data2.assays)$`PTPRC-RA`, method = 'pearson')
+correlation.erRO.dat2 <- cor.test(as.data.frame(data2.assays)$erCD45RO, as.data.frame(data2.assays)$`PTPRC-RO`, method = 'pearson')
+
+print(correlation.RA.dat2)
+print(correlation.RO.dat2)
+print(correlation.erRA.dat2)
+print(correlation.erRO.dat2)
+```
+
+```{r}
+correlation.RA.dat4 <- cor.test(log10(as.data.frame(data4.assays)$CD45RA+1), as.data.frame(data4.assays)$`PTPRC-RA`, method = 'pearson')
+correlation.RO.dat4 <- cor.test(log10(as.data.frame(data4.assays)$CD45RO+1), as.data.frame(data4.assays)$`PTPRC-RO`, method = 'pearson')
+
+print(correlation.RA.dat4)
+print(correlation.RO.dat4)
+```
+
+# Tile plot
+
+In this section we'll prepare various tile plots for different data sets. First we need a function to create numerical categories for
+
+```{r}
+# - vec: vector of values to cut, usually from data frame
+# - nbreaks: number of breaks for cut
+# - right: whether to start interval with inclusion of its right interval instead of left, default FALSE
+# - max.lim: maximum value; if false will take maximum and round to nearest maximum value
+cut.midp <- function(vec, nbreaks, right = F, max.lim = NULL){
+  if(is.null(max.lim)){
+    max.lim <- ceiling(max(vec))
+  }
+  breaks <- seq(floor(min(vec)), max.lim, length.out = (nbreaks + 1))
+  midpoints <- breaks[-length(breaks)] + diff(breaks)/2
+  return(cut(vec, breaks, labels = midpoints, right = right))
+}
+```
+
+## Data set 1 - IDEIS vs. CITEseq and CD45er
+
+Now generate tile plot assays for first data set. We fill data with missing values.
+
+```{r}
+pseudo.count <- 1
+
+data1.cat <- data1.assays %>% as.data.frame %>%
+  dplyr::mutate(categorical.PTPRC.RA = cut.midp(`PTPRC-RA`, 17, max.lim = 17) %>% as.character %>% as.numeric,
+                categorical.PTPRC.RO = cut.midp(`PTPRC-RO`, 18, max.lim = 18) %>% as.character %>% as.numeric,
+                categorical.CD45RA = cut.midp(log10(CD45RA + pseudo.count), 20) %>% as.character %>% as.numeric,
+                categorical.CD45RO = cut.midp(log10(CD45RO + pseudo.count), 20) %>% as.character %>% as.numeric,
+                categorical.erCD45RA = cut.midp(erCD45RA, 17, max.lim = 17) %>% as.character %>% as.numeric,
+                categorical.erCD45RO = cut.midp(erCD45RO, 18, max.lim = 18) %>% as.character %>% as.numeric)
+
+data1.cat.sum.FB.RA <- data1.cat %>% dplyr::group_by(categorical.PTPRC.RA, categorical.CD45RA) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RA = seq(15.5,16.5,1), 
+                     categorical.CD45RA = data1.cat.sum.FB.RA$categorical.CD45RA[1],
+                     count = pseudo.count)
+data1.cat.sum.FB.RA <- rbind(data1.cat.sum.FB.RA, filler)
+
+
+data1.cat.sum.FB.RO <- data1.cat %>% dplyr::group_by(categorical.PTPRC.RO, categorical.CD45RO) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RO = seq(13.5,17.5,1), 
+                     categorical.CD45RO = data1.cat.sum.FB.RO$categorical.CD45RO[1],
+                     count = pseudo.count)
+data1.cat.sum.FB.RO <- rbind(data1.cat.sum.FB.RO, filler)
+
+data1.cat.sum.er.RA <- data1.cat %>% dplyr::group_by(categorical.PTPRC.RA, categorical.erCD45RA) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RA = seq(15.5,16.5,1), 
+                     categorical.erCD45RA = data1.cat.sum.er.RA$categorical.erCD45RA[1],
+                     count = pseudo.count)
+data1.cat.sum.er.RA <- rbind(data1.cat.sum.er.RA, filler)
+
+data1.cat.sum.er.RO <- data1.cat %>% dplyr::group_by(categorical.PTPRC.RO, categorical.erCD45RO) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RO = seq(13.5,17.5,1), 
+                     categorical.erCD45RO = data1.cat.sum.er.RO$categorical.erCD45RO[1],
+                     count = pseudo.count)
+data1.cat.sum.er.RO <- rbind(data1.cat.sum.er.RO, filler)
+```
+
+Now we can plot these data and save them as pictures as well.
+
+```{r}
+data1.tile.CITE.RA <- ggplot(data1.cat.sum.FB.RA %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RA, categorical.CD45RA, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('log10(CD45RA - CITEseq)') + ylab('CD45RA - IDEIS') + 
+  ggtitle('Tile plot of correlation between CITEseq and IDEIS\n values for CD45RA isoforms of data set GSE187515')
+print(data1.tile.CITE.RA)
+```
+
+```{r}
+data1.tile.CITE.RO <- ggplot(data1.cat.sum.FB.RO %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RO, categorical.CD45RO, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('log10(CD45RO - CITEseq)') + ylab('CD45RO - IDEIS') + 
+  ggtitle('Tile plot of correlation between CITEseq and IDEIS\n values for CD45RO isoforms of data set GSE187515')
+print(data1.tile.CITE.RO)
+```
+
+```{r}
+data1.tile.CD45er.RA <- ggplot(data1.cat.sum.er.RA %>% ungroup %>%
+                                 tidyr::complete(categorical.PTPRC.RA, categorical.erCD45RA, fill = list(count = pseudo.count)),
+                               aes(x = categorical.erCD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('CD45er - CITEseq') + ylab('CD45RA - IDEIS') + 
+  ggtitle('Tile plot of correlation between CD45er and IDEIS\n values for CD45RA isoforms of data set GSE187515')
+print(data1.tile.CD45er.RA)
+```
+
+```{r}
+data1.tile.CD45er.RO <- ggplot(data1.cat.sum.er.RO %>% ungroup %>%
+                                 tidyr::complete(categorical.PTPRC.RO, categorical.erCD45RO, fill = list(count = pseudo.count)),
+                               aes(x = categorical.erCD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('CD45er - CITEseq') + ylab('CD45RO - IDEIS') + 
+  ggtitle('Tile plot of correlation between CD45er and IDEIS\n values for CD45RO isoforms of data set GSE187515')
+print(data1.tile.CD45er.RO)
+```
+
+Now save each file.
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_TilePlot_RA.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data1.tile.CITE.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_TilePlot_RO.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data1.tile.CITE.RO)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_TilePlot_RA.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data1.tile.CD45er.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_TilePlot_RO.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data1.tile.CD45er.RO)
+dev.off()
+```
+
+Now create empty figures.
+
+```{r}
+data1.tile.CITE.RA.blank <- ggplot(data1.cat.sum.FB.RA %>% ungroup %>%
+                                       tidyr::complete(categorical.PTPRC.RA, categorical.CD45RA, fill = list(count = pseudo.count)),
+                                     aes(x = categorical.CD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+```
+
+```{r}
+data1.tile.CITE.RO.blank <- ggplot(data1.cat.sum.FB.RO %>% ungroup %>%
+                                     tidyr::complete(categorical.PTPRC.RO, categorical.CD45RO, fill = list(count = pseudo.count)),
+                                   aes(x = categorical.CD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+```{r}
+data1.tile.CD45er.RA.blank <- ggplot(data1.cat.sum.er.RA %>% ungroup %>%
+                                       tidyr::complete(categorical.PTPRC.RA, categorical.erCD45RA, fill = list(count = pseudo.count)),
+                                     aes(x = categorical.erCD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+```{r}
+data1.tile.CD45er.RO.blank <- ggplot(data1.cat.sum.er.RO %>% ungroup %>%
+                                       tidyr::complete(categorical.PTPRC.RO, categorical.erCD45RO, fill = list(count = pseudo.count)),
+                                     aes(x = categorical.erCD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+And save those as well.
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_TilePlot_RA_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data1.tile.CITE.RA.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_TilePlot_RO_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data1.tile.CITE.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_TilePlot_RA_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data1.tile.CD45er.RA.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_TilePlot_RO_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data1.tile.CD45er.RO.blank)
+dev.off()
+```
+
+# Data set 2 - IDEIS vs. CITEseq and CD45er
+
+Now generate tile plot assays for first data set.
+
+```{r}
+pseudo.count <- 1
+
+data2.cat <- data2.assays %>% as.data.frame %>%
+  dplyr::mutate(categorical.PTPRC.RA = cut.midp(`PTPRC-RA`, 18, max.lim = 18) %>% as.character %>% as.numeric,
+                categorical.PTPRC.RO = cut.midp(`PTPRC-RO`, 13, max.lim = 13) %>% as.character %>% as.numeric,
+                categorical.CD45RA = cut.midp(log10(CD45RA + pseudo.count), 20) %>% as.character %>% as.numeric,
+                categorical.CD45RO = cut.midp(log10(CD45RO + pseudo.count), 20) %>% as.character %>% as.numeric,
+                categorical.erCD45RA = cut.midp(erCD45RA, 29, max.lim = 29) %>% as.character %>% as.numeric,
+                categorical.erCD45RO = cut.midp(erCD45RO, 19, max.lim = 19) %>% as.character %>% as.numeric)
+
+data2.cat.sum.FB.RA <- data2.cat %>% dplyr::group_by(categorical.PTPRC.RA, categorical.CD45RA) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RA = c(15.5, seq(18.5,28.5,1)), 
+                     categorical.CD45RA = data2.cat.sum.FB.RA$categorical.CD45RA[1],
+                     count = pseudo.count)
+data2.cat.sum.FB.RA <- rbind(data2.cat.sum.FB.RA, filler)
+
+data2.cat.sum.FB.RO <- data2.cat %>% dplyr::group_by(categorical.PTPRC.RO, categorical.CD45RO) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RO = seq(12.5, 18.5, 1), 
+                     categorical.CD45RO = data2.cat.sum.FB.RO$categorical.CD45RO[1],
+                     count = pseudo.count)
+data2.cat.sum.FB.RO <- rbind(data2.cat.sum.FB.RO, filler)
+
+data2.cat.sum.er.RA <- data2.cat %>% dplyr::group_by(categorical.PTPRC.RA, categorical.erCD45RA) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RA = c(15.5, seq(18.5,28.5,1)), 
+                     categorical.erCD45RA = 26.5,
+                     count = pseudo.count)
+data2.cat.sum.er.RA <- rbind(data2.cat.sum.er.RA, filler)
+
+data2.cat.sum.er.RO <- data2.cat %>% dplyr::group_by(categorical.PTPRC.RO, categorical.erCD45RO) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+filler <- data.frame(categorical.PTPRC.RO = seq(12.5, 18.5, 1), 
+                     categorical.erCD45RO = data2.cat.sum.er.RO$categorical.erCD45RO[1],
+                     count = pseudo.count)
+data2.cat.sum.er.RO <- rbind(data2.cat.sum.er.RO, filler)
+```
+
+Now we can plot these data and save them as pictures as well.
+
+```{r}
+data2.tile.CITE.RA <- ggplot(data2.cat.sum.FB.RA %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RA, categorical.CD45RA, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('log10(CD45RA - CITEseq)') + ylab('CD45RA - IDEIS') + 
+  ggtitle('Tile plot of correlation between CITEseq and IDEIS\n values for CD45RA isoforms of data set GSE212998')
+print(data2.tile.CITE.RA)
+```
+
+```{r}
+data2.tile.CITE.RO <- ggplot(data2.cat.sum.FB.RO %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RO, categorical.CD45RO, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('log10(CD45RO - CITEseq)') + ylab('CD45RO - IDEIS') + 
+  ggtitle('Tile plot of correlation between CITEseq and IDEIS\n values for CD45RO isoforms of data set GSE212998')
+print(data2.tile.CITE.RO)
+```
+
+```{r}
+data2.tile.CD45er.RA <- ggplot(data2.cat.sum.er.RA %>% ungroup %>%
+                                 tidyr::complete(categorical.PTPRC.RA, categorical.erCD45RA, fill = list(count = pseudo.count)),
+                               aes(x = categorical.erCD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('CD45er - CITEseq') + ylab('CD45RA - IDEIS') + 
+  ggtitle('Tile plot of correlation between CD45er and IDEIS\n values for CD45RA isoforms of data set GSE212998')
+print(data2.tile.CD45er.RA)
+```
+
+```{r}
+data2.tile.CD45er.RO <- ggplot(data2.cat.sum.er.RO %>% ungroup %>%
+                                 tidyr::complete(categorical.PTPRC.RO, categorical.erCD45RO, fill = list(count = pseudo.count)),
+                               aes(x = categorical.erCD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('CD45er - CITEseq') + ylab('CD45RO - IDEIS') + 
+  ggtitle('Tile plot of correlation between CD45er and IDEIS\n values for CD45RO isoforms of data set GSE212998')
+print(data2.tile.CD45er.RO)
+```
+
+Now save each file.
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_TilePlot_RA.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data2.tile.CITE.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_TilePlot_RO.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data2.tile.CITE.RO)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_TilePlot_RA.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data2.tile.CD45er.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_TilePlot_RO.tiff', width = 7, height = 6, units = 'in', res = 300)
+print(data2.tile.CD45er.RO)
+dev.off()
+```
+
+Now create empty figures.
+
+```{r}
+data2.tile.CITE.RA.blank <- ggplot(data2.cat.sum.FB.RA %>% ungroup %>%
+                                       tidyr::complete(categorical.PTPRC.RA, categorical.CD45RA, fill = list(count = pseudo.count)),
+                                     aes(x = categorical.CD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+
+```
+
+```{r}
+data2.tile.CITE.RO.blank <- ggplot(data2.cat.sum.FB.RO %>% ungroup %>%
+                                     tidyr::complete(categorical.PTPRC.RO, categorical.CD45RO, fill = list(count = pseudo.count)),
+                                   aes(x = categorical.CD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+```{r}
+data2.tile.CD45er.RA.blank <- ggplot(data2.cat.sum.er.RA %>% ungroup %>%
+                                       tidyr::complete(categorical.PTPRC.RA, categorical.erCD45RA, fill = list(count = pseudo.count)),
+                                     aes(x = categorical.erCD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+```{r}
+data2.tile.CD45er.RO.blank <- ggplot(data2.cat.sum.er.RO %>% ungroup %>%
+                                       tidyr::complete(categorical.PTPRC.RO, categorical.erCD45RO, fill = list(count = pseudo.count)),
+                                     aes(x = categorical.erCD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,4)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+And save those as well.
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_TilePlot_RA_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data2.tile.CITE.RA.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_TilePlot_RO_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data2.tile.CITE.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_TilePlot_RA_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data2.tile.CD45er.RA.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_TilePlot_RO_blank.tiff', width = 6.5, height = 6, units = 'in', res = 300)
+print(data2.tile.CD45er.RO.blank)
+dev.off()
+```
+
+## Data set 4 - IDEIS vs. CITEseq and CD45er
+
+Now generate tile plot assays for first data set. We fill data with missing values.
+
+```{r}
+pseudo.count <- 1
+
+data4.cat <- data4.assays %>% as.data.frame %>%
+  dplyr::mutate(categorical.PTPRC.RA = cut.midp(`PTPRC-RA`, 17, max.lim = 17) %>% as.character %>% as.numeric,
+                categorical.PTPRC.RO = cut.midp(`PTPRC-RO`, 18, max.lim = 18) %>% as.character %>% as.numeric,
+                categorical.CD45RA = cut.midp(log10(CD45RA + pseudo.count), 15) %>% as.character %>% as.numeric,
+                categorical.CD45RO = cut.midp(log10(CD45RO + pseudo.count), 15) %>% as.character %>% as.numeric)
+
+data4.cat.sum.FB.RA <- data4.cat %>% dplyr::group_by(categorical.PTPRC.RA, categorical.CD45RA) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+
+
+data4.cat.sum.FB.RO <- data4.cat %>% dplyr::group_by(categorical.PTPRC.RO, categorical.CD45RO) %>%
+  dplyr::summarize(count = n() + pseudo.count)
+```
+
+Now we can plot these data and save them as pictures as well.
+
+```{r}
+data4.tile.CITE.RA <- ggplot(data4.cat.sum.FB.RA %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RA, categorical.CD45RA, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('log10(CD45RA - CITEseq)') + ylab('CD45RA - IDEIS') + 
+  ggtitle('Tile plot of correlation between CITEseq and IDEIS\n values for CD45RA isoforms of data set PRJEB40376')
+print(data4.tile.CITE.RA)
+```
+
+```{r}
+data4.tile.CITE.RO <- ggplot(data4.cat.sum.FB.RO %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RO, categorical.CD45RO, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  xlab('log10(CD45RO - CITEseq)') + ylab('CD45RO - IDEIS') + 
+  ggtitle('Tile plot of correlation between CITEseq and IDEIS\n values for CD45RO isoforms of data set PRJEB40376')
+print(data4.tile.CITE.RO)
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_TilePlot_RA.tiff.tiff', width = 7, height = 4, units = 'in', res = 300)
+print(data4.tile.CITE.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_TilePlot_RO.tiff.tiff', width = 7, height = 4, units = 'in', res = 300)
+print(data4.tile.CITE.RO)
+dev.off()
+```
+
+```{r}
+data4.tile.CITE.RA.blank <- ggplot(data4.cat.sum.FB.RA %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RA, categorical.CD45RA, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RA, y = categorical.PTPRC.RA, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+```{r}
+data4.tile.CITE.RO.blank <- ggplot(data4.cat.sum.FB.RO %>% ungroup %>%
+                               tidyr::complete(categorical.PTPRC.RO, categorical.CD45RO, fill = list(count = pseudo.count)),
+                             aes(x = categorical.CD45RO, y = categorical.PTPRC.RO, fill = log10(count))) + 
+  geom_tile(color = 'white') +
+  scale_fill_gradientn(colors = c('navyblue', 'grey90', 'firebrick3'), breaks = c(0,3)) +
+  theme_classic() +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_TilePlot_RA.tiff_blank.tiff', width = 6.5, height = 4, units = 'in', res = 300)
+print(data4.tile.CITE.RA.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_TilePlot_RO.tiff_blank.tiff', width = 6.5, height = 4, units = 'in', res = 300)
+print(data4.tile.CITE.RO.blank)
+dev.off()
+```
+
+# Violin plots
+
+## Data set 1
+
+Now we make violin plots for both data sets for CD45RA, CD45RO and each method.
+
+```{r}
+vln.data1.CITE.RA <- VlnPlot(data1,  c('CD45RA'), pt.size = 0) + 
+  NoLegend()
+vln.data1.CITE.RO <- VlnPlot(data1,  c('CD45RO'), pt.size = 0) + 
+  NoLegend()
+vln.data1.IDEIS.RA <- VlnPlot(data1,  c('ptprc_PTPRC-RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1) 
+vln.data1.IDEIS.RO <- VlnPlot(data1,  c('ptprc_PTPRC-RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2) 
+vln.data1.CD45er.RA <- VlnPlot(data1,  c('erCD45RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1) 
+vln.data1.CD45er.RO <- VlnPlot(data1,  c('erCD45RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2)
+```
+
+```{r}
+print(vln.data1.CITE.RA)
+print(vln.data1.CITE.RO)
+print(vln.data1.IDEIS.RA)
+print(vln.data1.IDEIS.RO)
+print(vln.data1.CD45er.RA)
+print(vln.data1.CD45er.RO)
+```
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_RA.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CITE.RA)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_RO.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CITE.RO)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_IDEIS_RA.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.IDEIS.RA)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_IDEIS_RO.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.IDEIS.RO)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_Vln_CITE_CD45er_RA.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CD45er.RA)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_Vln_CITE_CD45er_RO.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CD45er.RO)
+dev.off()
+```
+
+Now make empty variant of the above.
+
+```{r}
+vln.data1.CITE.RA.blank <- VlnPlot(data1,  c('CD45RA'), pt.size = 0) + 
+  NoLegend() +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data1.CITE.RO.blank <- VlnPlot(data1,  c('CD45RO'), pt.size = 0) + 
+  NoLegend() +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data1.IDEIS.RA.blank <- VlnPlot(data1,  c('ptprc_PTPRC-RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1)  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data1.IDEIS.RO.blank <- VlnPlot(data1,  c('ptprc_PTPRC-RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2)  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data1.CD45er.RA.blank <- VlnPlot(data1,  c('erCD45RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1)  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data1.CD45er.RO.blank <- VlnPlot(data1,  c('erCD45RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_RA_blank.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CITE.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_RO_blank.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CITE.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_IDEIS_RA_blank.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.IDEIS.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_2/GSE187515_Fig2_Vln_CITE_IDEIS_RO_blank.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.IDEIS.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_Vln_CITE_CD45er_RA_blank.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CD45er.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE187515_Fig6_Vln_CITE_CD45er_RO_blank.tiff', width = 5, height = 5, units = 'in', res = 300)
+print(vln.data1.CD45er.RO.blank)
+dev.off()
+```
+
+## Data set 2
+
+Repeat the above for second data set.
+
+```{r}
+vln.data2.CITE.RA <- VlnPlot(data2,  c('CD45RA'), pt.size = 0) + 
+  NoLegend()
+vln.data2.CITE.RO <- VlnPlot(data2,  c('CD45RO'), pt.size = 0) + 
+  NoLegend()
+vln.data2.IDEIS.RA <- VlnPlot(data2,  c('ptprc_PTPRC-RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1) 
+vln.data2.IDEIS.RO <- VlnPlot(data2,  c('ptprc_PTPRC-RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2) 
+vln.data2.CD45er.RA <- VlnPlot(data2,  c('erCD45RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1) 
+vln.data2.CD45er.RO <- VlnPlot(data2,  c('erCD45RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2)
+```
+
+```{r}
+print(vln.data2.CITE.RA)
+print(vln.data2.CITE.RO)
+print(vln.data2.IDEIS.RA)
+print(vln.data2.IDEIS.RO)
+print(vln.data2.CD45er.RA)
+print(vln.data2.CD45er.RO)
+```
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_RA.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CITE.RA)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_RO.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CITE.RO)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_IDEIS_RA.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.IDEIS.RA)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_IDEIS_RO.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.IDEIS.RO)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_Vln_CITE_CD45er_RA.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CD45er.RA)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_Vln_CITE_CD45er_RO.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CD45er.RO)
+dev.off()
+```
+
+Now make empty variant of the above.
+
+```{r}
+vln.data2.CITE.RA.blank <- VlnPlot(data2,  c('CD45RA'), pt.size = 0) + 
+  NoLegend() +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data2.CITE.RO.blank <- VlnPlot(data2,  c('CD45RO'), pt.size = 0) + 
+  NoLegend() +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data2.IDEIS.RA.blank <- VlnPlot(data2,  c('ptprc_PTPRC-RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1)  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data2.IDEIS.RO.blank <- VlnPlot(data2,  c('ptprc_PTPRC-RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2)  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data2.CD45er.RA.blank <- VlnPlot(data2,  c('erCD45RA'), pt.size = 0) + 
+  NoLegend() + ylim(0,2.1)  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data2.CD45er.RO.blank <- VlnPlot(data2,  c('erCD45RO'), pt.size = 0) + 
+  NoLegend() + ylim(0,2) +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_RA_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CITE.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_RO_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CITE.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_IDEIS_RA_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.IDEIS.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_3/GSE212998_Fig3_Vln_CITE_IDEIS_RO_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.IDEIS.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_Vln_CITE_CD45er_RA_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CD45er.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_6/GSE212998_Fig6_Vln_CITE_CD45er_RO_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data2.CD45er.RO.blank)
+dev.off()
+```
+
+## Data set 3 (GSE155006)
+
+Repeat the above for third data set. Here it will be done only for IDEIS, as data lack other versions.
+
+```{r}
+vln.data3.IDEIS.RA <- VlnPlot(data3,  c('Ptprc-RA'), pt.size = 0) + 
+  NoLegend()
+vln.data3.IDEIS.RB <- VlnPlot(data3,  c('Ptprc-RB'), pt.size = 0) + 
+  NoLegend()
+vln.data3.IDEIS.RC <- VlnPlot(data3,  c('Ptprc-RC'), pt.size = 0) + 
+  NoLegend()
+vln.data3.IDEIS.RO <- VlnPlot(data3,  c('Ptprc-RO'), pt.size = 0) + 
+  NoLegend()
+```
+
+```{r}
+print(vln.data3.IDEIS.RA)
+print(vln.data3.IDEIS.RB)
+print(vln.data3.IDEIS.RC)
+print(vln.data3.IDEIS.RO)
+```
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RA.tiff', width = 8, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RA)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RB.tiff', width = 8, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RB)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RC.tiff', width = 8, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RC)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RO.tiff', width = 8, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RO)
+dev.off()
+```
+
+Now make empty variant of the above.
+
+```{r}
+vln.data3.IDEIS.RA.blank <- VlnPlot(data3,  c('ptprc_Ptprc-RA'), pt.size = 0) + 
+  NoLegend() +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data3.IDEIS.RB.blank <- VlnPlot(data3,  c('ptprc_Ptprc-RB'), pt.size = 0) + 
+  NoLegend()  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data3.IDEIS.RC.blank <- VlnPlot(data3,  c('ptprc_Ptprc-RC'), pt.size = 0) + 
+  NoLegend()  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data3.IDEIS.RO.blank <- VlnPlot(data3,  c('ptprc_Ptprc-RO'), pt.size = 0) + 
+  NoLegend()  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RA_blank.tiff', width = 10, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RB_blank.tiff', width = 10, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RB.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RC_blank.tiff', width = 10, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RC.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_5/GSE155006_Fig5_Vln_CITE_IDEIS_RO_blank.tiff', width = 10, height = 5, units = 'in', res = 300)
+print(vln.data3.IDEIS.RO.blank)
+dev.off()
+```
+
+## Data set 4 (PRJEB40376)
+
+Finally, do the same for data set PRJEB40376.
+
+```{r}
+vln.data4.CITE.RA <- VlnPlot(data4,  c('CD45RA'), pt.size = 0) + 
+  NoLegend()
+vln.data4.CITE.RO <- VlnPlot(data4,  c('CD45RO'), pt.size = 0) + 
+  NoLegend()
+vln.data4.IDEIS.RA <- VlnPlot(data4,  c('ptprc_PTPRC-RA'), pt.size = 0) + 
+  NoLegend() 
+vln.data4.IDEIS.RO <- VlnPlot(data4,  c('ptprc_PTPRC-RO'), pt.size = 0) + 
+  NoLegend()
+```
+
+```{r}
+print(vln.data4.CITE.RA)
+print(vln.data4.CITE.RO)
+print(vln.data4.IDEIS.RA)
+print(vln.data4.IDEIS.RO)
+```
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_RA.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.CITE.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_RO.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.CITE.RO)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_IDEIS_RA.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.IDEIS.RA)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_IDEIS_RO.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.IDEIS.RO)
+dev.off()
+```
+
+Now make empty variant of the above.
+
+```{r}
+vln.data4.CITE.RA.blank <- VlnPlot(data4,  c('CD45RA'), pt.size = 0) + 
+  NoLegend() +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data4.CITE.RO.blank <- VlnPlot(data4,  c('CD45RO'), pt.size = 0) + 
+  NoLegend() +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data4.IDEIS.RA.blank <- VlnPlot(data4,  c('ptprc_PTPRC-RA'), pt.size = 0) + 
+  NoLegend()  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+vln.data4.IDEIS.RO.blank <- VlnPlot(data4,  c('ptprc_PTPRC-RO'), pt.size = 0) + 
+  NoLegend()  +
+  ggtitle('') + xlab('') + ylab('') +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        legend.title=element_blank(),
+        legend.text=element_blank())
+```
+
+
+
+Save them.
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_RA_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.CITE.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_RO_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.CITE.RO.blank)
+dev.off()
+```
+
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_IDEIS_RA_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.IDEIS.RA.blank)
+dev.off()
+```
+```{r}
+tiff('Figures_auto_revision/Figure_7/PRJEB40376_Fig7_Vln_CITE_IDEIS_RO_blank.tiff', width = 6, height = 5, units = 'in', res = 300)
+print(vln.data4.IDEIS.RO.blank)
+dev.off()
+```
+
+# Linear fits
+
+Now generate linear fits.

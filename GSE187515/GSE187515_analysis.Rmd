@@ -307,7 +307,6 @@ We also remove cells with more than 10% of geneome mapping MT from every data-se
 
 ```{r}
 HIV_list[[2]] <- subset(HIV_list[[2]], seurat_clusters %nin% c(7) & percent.mt <= 10)
-HIV_list[[2]] <- subset(HIV_list[[2]], seurat_clusters %nin% c(7) & percent.mt <= 10)
 HIV_list[[3]] <- subset(HIV_list[[3]], seurat_clusters %nin% c(6,9,11) & percent.mt <= 10)
 ```
 
@@ -392,7 +391,7 @@ HIV.integ.data <- FindClusters(HIV.integ.data, resolution = 0.5)
 ```{r}
 DimPlot(HIV.integ.data, label = T) + ggtitle('HIV-CD4+ analysis - unistimulated healthy controls\n - integration')
 VlnPlot(HIV.integ.data, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, pt.size = 0)
-DimPlot(HIV.integ.data, group.by = 'orig.ident', label = T) + ggtitle('HIV-CD4+ analysis - unistimulated healthy controls\n - integration')
+DimPlot(HIV.integ.data, group.by = 'orig.ident', label = T) + ggtitle('HIV-CD4+ analysis - unstimulated healthy controls\n - integration')
 ```
 
 ```{r, warning = F, fig.width = 10}

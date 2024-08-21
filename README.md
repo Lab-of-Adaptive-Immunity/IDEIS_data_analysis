@@ -95,3 +95,16 @@ python count_mapped_reads.py
 13.) Perform analyses of data with GSE187515_analysis.Rmd, GSE212998_analysis.Rmd, GSE155006_analysis.Rmd and PRJEB40376_analysis.Rmd. The best way is to run these files in RStudio with 'Run All' option.
 
 14.) Run Benchmarks.Rmd. Again, the best way is to use RStudio and 'Run All' option.
+
+15.) Run supplementary analyses done during Revision. These are in Revisions directory.
+
+```
+cd Revisions
+```
+
+Once there, run Figures_for_revision_tile_vln_plots.Rmd, Pseudobulk_R_regressions.Rmd and UMAP_isoforms_as_features.Rmd (in this order and ideally in R Studio with 'Run All' option). Return back in main project directory once finished.
+
+```
+cd ..
+```
+

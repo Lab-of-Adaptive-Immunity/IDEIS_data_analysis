@@ -1,0 +1,228 @@
+---
+title: "Revisions - comparing intergation with CITE-seq and IDEIS"
+author: "Juraj Michalik"
+date: "2024-08-11"
+output: html_document
+---
+
+License:
+
+CC-BY-4.0 by Lab of Adaptive Immunity from Institute of Molecular Genetics of the Czech Academy of Sciences
+
+This script and all its parts are licensed under a
+Creative Commons Attribution 4.0 International License.
+
+You should have received a copy of the license along with this
+work. If not, see <https://creativecommons.org/licenses/by/4.0/>.
+
+Acknowledgements:
+
+This project was supported by the National Institute of Virology and 
+Bacteriology (Programme EXCELES, LX22NPO5103 to Ondrej Stepanek) - 
+funded by the European Union - Next Generation EU.
+
+---
+
+This file features figures for Point by Point for paper of Michalik et al. Here we compute UMAP visualisations using CD45RA and CD45RO as determinedby either CITE-seq or IDEIS as features.
+
+Note that file 'Pseudobuk_R_regressons.Rmd' must be run beforehand.
+
+# Initialization
+
+Load packages.
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(cowplot)
+library(gridExtra)
+library(ggrepel)
+library(STACAS)
+library(Matrix)
+library(Matrix.utils)
+library(scales)
+library(stringr)
+
+# negation of %in% 
+`%nin%` = Negate(`%in%`)
+```
+
+Load data.
+
+```{r}
+data2004 <- readRDS('../GSE187515/Datasets/dataset_2004_finalized_data.rds')
+data2023rep1 <- readRDS('../GSE187515/Datasets/dataset_2023Rep1_finalized_data.rds')
+data2023rep2 <- readRDS('~../GSE187515/Datasets/dataset_2023Rep2_finalized_data.rds')
+  
+HIV_list <- list(data2004, data2023rep1, data2023rep2)
+```
+
+Create directory where new RDS will be saved.
+
+```{r}
+dir.create('Datasets')
+```  
+  
+# Passing CITE-seq and IDEIS as features
+
+We pass data to each assay from CITE seq as new feature.
+
+```{r}
+counts.2004 <- GetAssayData(HIV_list[[1]], slot = 'counts', assay = 'RNA')
+counts.2023rep1 <- GetAssayData(HIV_list[[2]], slot = 'counts' , assay = 'RNA')
+counts.2023rep2 <- GetAssayData(HIV_list[[3]], slot = 'counts' , assay = 'RNA')
+
+counts.2004.CITE <- GetAssayData(HIV_list[[1]], slot = 'counts', assay = 'Antibodies')
+counts.2023rep1.CITE <- GetAssayData(HIV_list[[2]], slot = 'counts', assay = 'Antibodies')
+counts.2023rep2.CITE <- GetAssayData(HIV_list[[3]], slot = 'counts', assay = 'Antibodies')
+
+counts.2004.IDEIS <- GetAssayData(HIV_list[[1]], slot = 'counts', assay = 'Ptprc')
+counts.2023rep1.IDEIS <- GetAssayData(HIV_list[[2]], slot = 'counts', assay = 'Ptprc')
+counts.2023rep2.IDEIS <- GetAssayData(HIV_list[[3]], slot = 'counts', assay = 'Ptprc')
+
+# subfilter to genes of interest
+
+counts.2004.CITE <- counts.2004.CITE[c('CD45RA', 'CD45RO'),]
+counts.2023rep1.CITE <- counts.2023rep1.CITE[c('CD45RA', 'CD45RO'),]
+counts.2023rep2.CITE <- counts.2023rep2.CITE[c('CD45RA', 'CD45RO'),]
+
+counts.2004.IDEIS <- counts.2004.IDEIS[c('PTPRC-RA', 'PTPRC-RO'),]
+counts.2023rep1.IDEIS <- counts.2023rep1.IDEIS[c('PTPRC-RA', 'PTPRC-RO'),]
+counts.2023rep2.IDEIS <- counts.2023rep2.IDEIS[c('PTPRC-RA', 'PTPRC-RO'),]
+```
+
+# Passing CITE-seq as features
+
+Merge data, make objects and make list.
+
+```{r}
+counts.2004.CITE.GEX <- rbind(counts.2004, counts.2004.CITE)
+counts.2023rep1.CITE.GEX <- rbind(counts.2023rep1, counts.2023rep1.CITE)
+counts.2023rep2.CITE.GEX <- rbind(counts.2023rep2, counts.2023rep2.CITE)
+
+seu.2004.CITE <- CreateSeuratObject(counts.2004.CITE.GEX)
+seu.2023.rep1.CITE <- CreateSeuratObject(counts.2023rep1.CITE.GEX)
+seu.2023.rep2.CITE <- CreateSeuratObject(counts.2023rep2.CITE.GEX)
+
+seu.2004.CITE[['Ptprc']] <- CreateAssayObject(counts.2004.IDEIS)
+seu.2023.rep1.CITE[['Ptprc']] <- CreateAssayObject(counts.2023rep1.IDEIS)
+seu.2023.rep2.CITE[['Ptprc']] <- CreateAssayObject(counts.2023rep2.IDEIS)
+
+HIV.CITE <- list(seu.2004.CITE, seu.2023.rep1.CITE, seu.2023.rep2.CITE)
+```
+
+Now we need to renormalize and select variable features.
+
+```{r}
+for(i in 1:length(HIV.CITE)){
+  HIV.CITE[[i]] <- NormalizeData(HIV.CITE[[i]])
+  HIV.CITE[[i]] <- FindVariableFeatures(HIV.CITE[[i]], selection.method = "vst",
+                                        nfeatures = 1000, verbose = FALSE)
+}
+```
+
+```{r}
+HIV.CITE.integ <- Run.STACAS(HIV.CITE, anchor.features = c(VariableFeatures(HIV.CITE[[1]]), 'CD45RA', 'CD45RO'))
+```
+
+```{r}
+HIV.CITE.integ <- ScaleData(HIV.CITE.integ, verbose = FALSE)
+HIV.CITE.integ <- RunPCA(HIV.CITE.integ, npcs = 20, verbose = FALSE)
+HIV.CITE.integ <- RunUMAP(HIV.CITE.integ, reduction = "pca", dims = 1:20)
+  
+HIV.CITE.integ <- FindNeighbors(HIV.CITE.integ, dims = 1:20)
+HIV.CITE.integ <- FindClusters(HIV.CITE.integ, resolution = 0.5)
+```
+
+```{r}
+DimPlot(HIV.CITE.integ, label = T) + ggtitle('HIV-CD4+ analysis with CITE-seq as features')
+VlnPlot(HIV.CITE.integ, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, pt.size = 0)
+```
+
+```{r}
+png('Figures_Point_by_Point//GSE187515_UMAP_with_CITEseq.png', width = 6.5, height = 6, units = 'in', res = 200)
+print(DimPlot(HIV.CITE.integ, label = T) + ggtitle('HIV-CD4+ analysis with CITE-seq as features'))
+dev.off()
+```
+
+```{r}
+png('Figures_Point_by_Point/GSE187515_UMAP_with_CITEseq_FeaturePlot.png', width = 11, height = 6, units = 'in', res = 200)
+print(FeaturePlot(HIV.CITE.integ, features = c('CD45RA', 'CD45RO'), min.cutoff = 0))
+dev.off()
+```
+
+Save.
+
+```{r}
+saveRDS(HIV.CITE.integ, 'Datasets/HIV_with_CITE.rds')
+```
+
+# Passing IDEIS as feature
+
+We pass data to each assay from IDEIS seq as new feature.
+
+Merge data, make objects and make list.
+
+```{r}
+counts.2004.IDEIS.GEX <- rbind(counts.2004, counts.2004.IDEIS)
+counts.2023rep1.IDEIS.GEX <- rbind(counts.2023rep1, counts.2023rep1.IDEIS)
+counts.2023rep2.IDEIS.GEX <- rbind(counts.2023rep2, counts.2023rep2.IDEIS)
+
+seu.2004.IDEIS <- CreateSeuratObject(counts.2004.IDEIS.GEX)
+seu.2023.rep1.IDEIS <- CreateSeuratObject(counts.2023rep1.IDEIS.GEX)
+seu.2023.rep2.IDEIS <- CreateSeuratObject(counts.2023rep2.IDEIS.GEX)
+
+seu.2004.IDEIS[['Antibodies']] <- CreateAssayObject(counts.2004.CITE)
+seu.2023.rep1.IDEIS[['Antibodies']] <- CreateAssayObject(counts.2023rep1.CITE)
+seu.2023.rep2.IDEIS[['Antibodies']] <- CreateAssayObject(counts.2023rep2.CITE)
+
+HIV.IDEIS <- list(seu.2004.IDEIS, seu.2023.rep1.IDEIS, seu.2023.rep2.IDEIS)
+```
+
+Now we need to renormalize and select variable features.
+
+```{r}
+for(i in 1:length(HIV.IDEIS)){
+  HIV.IDEIS[[i]] <- NormalizeData(HIV.IDEIS[[i]])
+  HIV.IDEIS[[i]] <- FindVariableFeatures(HIV.IDEIS[[i]], selection.method = "vst",
+                                        nfeatures = 1000, verbose = FALSE)
+}
+```
+
+```{r}
+HIV.IDEIS.integ <- Run.STACAS(HIV.IDEIS, anchor.features = c(VariableFeatures(HIV.IDEIS[[1]]), 'PTPRC-RA', 'PTPRC-RO'))
+```
+
+```{r}
+HIV.IDEIS.integ <- ScaleData(HIV.IDEIS.integ, verbose = FALSE)
+HIV.IDEIS.integ <- RunPCA(HIV.IDEIS.integ, npcs = 20, verbose = FALSE)
+HIV.IDEIS.integ <- RunUMAP(HIV.IDEIS.integ, reduction = "pca", dims = 1:20)
+  
+HIV.IDEIS.integ <- FindNeighbors(HIV.IDEIS.integ, dims = 1:20)
+HIV.IDEIS.integ <- FindClusters(HIV.IDEIS.integ, resolution = 0.5)
+```
+
+```{r}
+DimPlot(HIV.IDEIS.integ, label = T) + ggtitle('HIV-CD4+ analysis with IDEIS as features')
+VlnPlot(HIV.IDEIS.integ, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, pt.size = 0)
+```
+
+```{r}
+png('Figures_Point_by_Point/GSE187515_UMAP_with_IDEIS.png', width = 6.5, height = 6, units = 'in', res = 200)
+print(DimPlot(HIV.IDEIS.integ, label = T) + ggtitle('HIV-CD4+ analysis with IDEIS as features'))
+dev.off()
+```
+
+```{r}
+png('Figures_Point_by_Point/GSE187515_UMAP_with_IDEIS_FeaturePlot.png', width = 11, height = 6, units = 'in', res = 200)
+print(FeaturePlot(HIV.IDEIS.integ, features = c('PTPRC-RA', 'PTPRC-RO'), min.cutoff = 0))
+dev.off()
+```
+Save.
+
+```{r}
+saveRDS(HIV.IDEIS.integ, 'Datasets/HIV_with_IDEIS.rds')
+```

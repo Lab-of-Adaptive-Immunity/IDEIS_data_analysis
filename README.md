@@ -1,6 +1,6 @@
 This directory contains all required file to reproduce analyses presented in paper of Michalik et al.  
 
-Link to paper:
+Link to paper: [Here.](https://pubmed.ncbi.nlm.nih.gov/39445006/)
 
 ## Before starting
 

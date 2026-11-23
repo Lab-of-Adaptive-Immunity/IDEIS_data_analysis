@@ -24,7 +24,7 @@ funded by the European Union - Next Generation EU.
 ---
 
 Analysis of CD45/PTPRC isoforms from human PBMCs. These data lack FB so we need to use standard markers to identify cell types and see the match with Cd45 isoform expression.
-Paper: https://www.sciencedirect.com/science/article/pii/S1074761320304921?via%3Dihub
+Paper: https://www.frontiersin.org/journals/immunology/articles/10.3389/fimmu.2021.636720/full
 
 Run this script once GSE155006_preparation.Rmd and IDEIS were run.
 
